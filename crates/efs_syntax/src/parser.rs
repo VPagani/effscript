@@ -1791,13 +1791,14 @@ impl<'a> Parser<'a> {
                     self.error(t.span, "expected `:`");
                 }
             }
+            if self.peek().span.start == before {
+                // Nothing was consumed: stop rather than loop on the same token.
+                break;
+            }
             if !self.eat(",") {
                 if !self.is("}") && self.peek().nl_before {
                     continue;
                 }
-                break;
-            }
-            if self.peek().span.start == before {
                 break;
             }
         }
