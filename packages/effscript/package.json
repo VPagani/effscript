@@ -13,13 +13,6 @@
   "files": [
     "bin"
   ],
-  "optionalDependencies": {
-    "@effscript/cli-linux-x64": "0.1.0",
-    "@effscript/cli-linux-arm64": "0.1.0",
-    "@effscript/cli-darwin-x64": "0.1.0",
-    "@effscript/cli-darwin-arm64": "0.1.0",
-    "@effscript/cli-win32-x64": "0.1.0"
-  },
   "typescript": {
     "contentMapper": {
       "exec": [
