@@ -1770,7 +1770,8 @@ impl<'s> Gen<'s> {
                 }
                 Attr::Named { name, value, span } => {
                     self.w.push_node(*span);
-                    self.attr(name, value.as_ref());
+                    let tag = el.name[0].name.clone();
+                    self.attr(&tag, name, value.as_ref());
                     self.w.pop_node();
                 }
             }
@@ -1816,7 +1817,7 @@ impl<'s> Gen<'s> {
         self.w.pop_node();
     }
 
-    fn attr(&mut self, name: &Ident, value: Option<&AttrValue>) {
+    fn attr(&mut self, tag: &str, name: &Ident, value: Option<&AttrValue>) {
         let n = name.name.as_str();
         let write_value = |g: &mut Self| match value {
             Some(AttrValue::Str(s)) => g.w.v(s.span),
@@ -1851,7 +1852,13 @@ impl<'s> Gen<'s> {
                 }
                 self.w.s(")");
             }
-            "style" | "value" | "checked" | "selected" | "disabled" | "modal" => {
+            // Effect UI's controlled properties, on the elements that have them.
+            "style" | "disabled" => {
+                self.w.s(&format!(".{n}("));
+                write_value(self);
+                self.w.s(")");
+            }
+            "value" | "checked" | "selected" | "modal" if has_property(tag, n) => {
                 self.w.s(&format!(".{n}("));
                 write_value(self);
                 self.w.s(")");
@@ -2262,5 +2269,17 @@ fn returned_stmt<'a>(s: &'a Stmt, out: &mut Vec<&'a Expr>) {
             returned_exprs(body, out)
         }
         _ => {}
+    }
+}
+
+/// Whether Effect UI's element builder controls `property` on `tag` (`.value(...)` on an
+/// `input`); elsewhere the name is an ordinary attribute (`value` on an `option`).
+fn has_property(tag: &str, property: &str) -> bool {
+    match property {
+        "value" => matches!(tag, "input" | "textarea" | "select"),
+        "checked" => tag == "input",
+        "selected" => tag == "option",
+        "modal" => tag == "dialog",
+        _ => false,
     }
 }

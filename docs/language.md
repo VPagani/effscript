@@ -551,7 +551,8 @@ files can construct them, for example a command that returns
 | --- | --- |
 | `<div>...</div>` | `h.div.children(...)` |
 | `class="a"`, `class={[a, cond && "b"]}` | `.class("a")`, `.class(a, cond && "b")` |
-| `style`, `value`, `checked`, `selected`, `disabled`, `modal` | the method of the same name |
+| `style`, `disabled` | the method of the same name |
+| `value` on `input`, `textarea`, `select`; `checked` on `input`; `selected` on `option`; `modal` on `dialog` | the method of the same name (elsewhere, an ordinary attribute) |
 | `on:click={Clicked({ n: 1 })}`, `on:input={({ value }) => Typed({ value })}` | `.on("click", ...)` with a message or a function of the payload |
 | `on:click={ClickedReset}` | `.on("click", ClickedReset())`: a message without fields can be named bare |
 | `on:keydown\|preventDefault={f}` | `.on("keydown", f, { preventDefault: true })` |
