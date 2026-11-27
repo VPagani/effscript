@@ -378,7 +378,10 @@ impl Linter {
                 let rest = Block { stmts: b.stmts[i + 1..].to_vec(), span: b.span };
                 let mut used = false;
                 walk_block(&rest, &mut |e| {
-                    if matches!(&e.kind, ExprKind::Ident(n) if *n == id.name) {
+                    // Markup compiles to calls on the element builder `h`.
+                    if matches!(&e.kind, ExprKind::Ident(n) if *n == id.name)
+                        || (id.name == "h" && matches!(e.kind, ExprKind::Markup(_)))
+                    {
                         used = true;
                     }
                 });
@@ -638,6 +641,12 @@ mod tests {
         assert!(codes("const p = effect {\n  run Console.log(\"hi\")\n}").is_empty());
         assert!(codes("const p = effect {\n  users.set(1, 2)\n}").is_empty());
         assert!(codes("const p = effect {\n  Queue.offerUnsafe(queue, 1)\n}").is_empty());
+    }
+
+    #[test]
+    fn markup_uses_the_element_builder() {
+        assert!(codes("const f = (helper) => {\n  const h = helper\n  return <p>hi</p>\n}").is_empty());
+        assert_eq!(codes("const f = (helper) => {\n  const h = helper\n  return 1\n}"), vec!["lint/unused-binding"]);
     }
 
     #[test]
