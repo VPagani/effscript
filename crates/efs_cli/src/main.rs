@@ -223,7 +223,8 @@ fn main() -> ExitCode {
             if stdin {
                 let mut src = String::new();
                 std::io::stdin().read_to_string(&mut src).ok();
-                match efs_fmt::format(&src) {
+                let opts = config::Config::load(Path::new(".")).fmt_options();
+                match efs_fmt::format_with(&src, &opts) {
                     Ok(out) => print!("{out}"),
                     Err(diags) => {
                         for d in diags {
@@ -236,7 +237,8 @@ fn main() -> ExitCode {
             let mut changed = 0;
             for file in collect(&paths) {
                 let Ok(src) = std::fs::read_to_string(&file) else { continue };
-                match efs_fmt::format(&src) {
+                let opts = config::Config::load(&file).fmt_options();
+                match efs_fmt::format_with(&src, &opts) {
                     Ok(out) if out != src => {
                         changed += 1;
                         if check {

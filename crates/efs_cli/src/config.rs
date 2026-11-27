@@ -1,7 +1,7 @@
 //! `efs.json`: optional project configuration, found next to or above the given path.
 //!
 //! ```json
-//! { "importExtension": ".js", "outDir": "gen", "sourceMap": true, "emit": "js", "declaration": true, "lint": { "disabled": ["unused-binding"] } }
+//! { "importExtension": ".js", "outDir": "gen", "sourceMap": true, "emit": "js", "declaration": true, "lint": { "disabled": ["unused-binding"] }, "fmt": { "semicolons": false } }
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -16,6 +16,8 @@ pub struct Config {
     /// With JavaScript output, also write `.d.ts` files.
     pub declaration: bool,
     pub lint_disabled: Vec<String>,
+    /// `efs fmt` prints `;` terminators (default true).
+    pub fmt_semicolons: bool,
 }
 
 impl Default for Config {
@@ -27,6 +29,7 @@ impl Default for Config {
             emit_js: false,
             declaration: false,
             lint_disabled: Vec::new(),
+            fmt_semicolons: true,
         }
     }
 }
@@ -69,7 +72,14 @@ impl Config {
         if let Some(rules) = v["lint"]["disabled"].as_array() {
             c.lint_disabled = rules.iter().filter_map(|r| r.as_str().map(String::from)).collect();
         }
+        if let Some(s) = v["fmt"]["semicolons"].as_bool() {
+            c.fmt_semicolons = s;
+        }
         c
+    }
+
+    pub fn fmt_options(&self) -> efs_fmt::FormatOptions {
+        efs_fmt::FormatOptions { semicolons: self.fmt_semicolons }
     }
 
     pub fn codegen(&self) -> efs_codegen::Options {

@@ -7,13 +7,32 @@ use efs_syntax::ast::*;
 use efs_syntax::lexer::Comment;
 use efs_syntax::{Diagnostic, Span};
 
-/// Formats EffScript source. Files with syntax errors are not formatted.
+/// Formatter options.
+#[derive(Clone, Debug)]
+pub struct FormatOptions {
+    /// Print `;` after statements and line-style declarations (the default), or leave them out.
+    pub semicolons: bool,
+}
+
+impl Default for FormatOptions {
+    fn default() -> Self {
+        FormatOptions { semicolons: true }
+    }
+}
+
+/// Formats EffScript source with the default options. Files with syntax errors are not formatted.
 pub fn format(src: &str) -> Result<String, Vec<Diagnostic>> {
+    format_with(src, &FormatOptions::default())
+}
+
+/// Formats EffScript source. Files with syntax errors are not formatted.
+pub fn format_with(src: &str, opts: &FormatOptions) -> Result<String, Vec<Diagnostic>> {
     let parsed = efs_syntax::parse(src);
     if !parsed.diagnostics.is_empty() {
         return Err(parsed.diagnostics);
     }
-    let mut p = Printer { src, out: String::new(), indent: 0, comments: parsed.comments, next: 0 };
+    let mut p =
+        Printer { src, out: String::new(), indent: 0, comments: parsed.comments, next: 0, semi: opts.semicolons };
     p.module(&parsed.module);
     Ok(p.out)
 }
@@ -24,11 +43,19 @@ struct Printer<'s> {
     indent: usize,
     comments: Vec<Comment>,
     next: usize,
+    semi: bool,
 }
 
 impl Printer<'_> {
     fn w(&mut self, s: &str) {
         self.out.push_str(s);
+    }
+
+    /// Prints the optional `;` terminator, if enabled.
+    fn semi(&mut self) {
+        if self.semi {
+            self.w(";");
+        }
     }
 
     fn newline(&mut self) {
@@ -195,6 +222,7 @@ impl Printer<'_> {
                     self.w(" from ");
                 }
                 self.raw(imp.source.span);
+                self.semi();
             }
             ItemKind::ExportList(list) => {
                 if list.star {
@@ -206,15 +234,25 @@ impl Printer<'_> {
                     self.w(" from ");
                     self.raw(s.span);
                 }
+                self.semi();
             }
-            ItemKind::Let(l) => self.let_decl(l),
-            ItemKind::Fn(f) => self.fn_decl(f),
+            ItemKind::Let(l) => {
+                self.let_decl(l);
+                self.semi();
+            }
+            ItemKind::Fn(f) => {
+                self.fn_decl(f);
+                if fn_needs_semi(f) {
+                    self.semi();
+                }
+            }
             ItemKind::Type(t) => {
                 self.w("type ");
                 self.ident(&t.name);
                 self.type_params(&t.type_params);
                 self.w(" = ");
                 self.ty(&t.ty);
+                self.semi();
             }
             ItemKind::Service(s) => {
                 self.w("service ");
@@ -225,7 +263,7 @@ impl Printer<'_> {
                     self.w(")");
                 }
                 self.w(" ");
-                self.members(&s.members, item.span, true);
+                self.members(&s.members, item.span, true, true);
             }
             ItemKind::Layer(l) => {
                 self.w("layer ");
@@ -240,6 +278,7 @@ impl Printer<'_> {
                     LayerBody::Value(v) => {
                         self.w(" = ");
                         self.expr(v);
+                        self.semi();
                     }
                 }
             }
@@ -248,7 +287,7 @@ impl Printer<'_> {
                 self.ident(&e.name);
                 if !e.fields.is_empty() {
                     self.w(" ");
-                    self.members(&e.fields, item.span, false);
+                    self.members(&e.fields, item.span, false, false);
                 }
             }
             ItemKind::Schema(s) => {
@@ -262,6 +301,7 @@ impl Printer<'_> {
                     SchemaKind::Alias(t) => {
                         self.w(" = ");
                         self.ty(t);
+                        self.semi();
                     }
                     SchemaKind::Struct(f) | SchemaKind::Class(f) | SchemaKind::Tagged(f) => {
                         self.w(" ");
@@ -277,7 +317,7 @@ impl Printer<'_> {
             }
             ItemKind::Machine(m) => self.machine(m, item.span),
             ItemKind::Component(c) => self.component(c, item.span),
-            ItemKind::Stmt(s) => self.stmt(s),
+            ItemKind::Stmt(s) => self.stmt_semi(s),
         }
     }
 
@@ -519,10 +559,22 @@ impl Printer<'_> {
         self.w(close);
     }
 
-    fn members(&mut self, members: &[TypeMember], container: Span, force_multi: bool) {
+    fn members(&mut self, members: &[TypeMember], container: Span, force_multi: bool, terminate: bool) {
         let multi =
             force_multi && !members.is_empty() || self.list_is_multiline(container, members.first().map(|m| m.span));
-        self.braced_list(members, |m| m.span, "{", "}", multi, |p, m| p.member(m));
+        self.braced_list(
+            members,
+            |m| m.span,
+            "{",
+            "}",
+            multi,
+            |p, m| {
+                p.member(m);
+                if terminate && multi {
+                    p.semi();
+                }
+            },
+        );
     }
 
     /// Whether a list in `container` begins on a new line after its opening bracket.
@@ -747,6 +799,7 @@ impl Printer<'_> {
                     }
                     self.w(" ");
                     self.transition(&o.transition);
+                    self.semi();
                 }
                 Entry::Invoke(i) => self.invoke(i),
             }
@@ -824,6 +877,7 @@ impl Printer<'_> {
                 if let Some((_, t)) = i.handlers.first() {
                     self.transition(t);
                 }
+                self.semi();
             }
             InvokeSrc::Named(src) => {
                 self.w("invoke ");
@@ -842,11 +896,14 @@ impl Printer<'_> {
                         self.ident(name);
                         self.w(" ");
                         self.transition(t);
+                        self.semi();
                         self.trailing(Self::transition_span(t).end);
                     }
                     self.indent -= 1;
                     self.newline();
                     self.w("}");
+                } else {
+                    self.semi();
                 }
             }
         }
@@ -869,6 +926,7 @@ impl Printer<'_> {
                 MemberKind::Prop(f) | MemberKind::Let(f) => {
                     self.w(if matches!(m.kind, MemberKind::Prop(_)) { "prop " } else { "let " });
                     self.schema_field(f);
+                    self.semi();
                 }
                 MemberKind::Event(v) => {
                     self.w("event ");
@@ -876,6 +934,7 @@ impl Printer<'_> {
                     if !v.fields.is_empty() {
                         self.schema_fields(&v.fields, "(", ")", v.span);
                     }
+                    self.semi();
                 }
                 MemberKind::Update(u) => {
                     self.w("update ");
@@ -892,17 +951,22 @@ impl Printer<'_> {
                             self.w(" =>");
                             let after = u.fields.last().map_or(u.message.span.end, |f| f.span.end);
                             self.arrow_rhs(after, e);
+                            self.semi();
                         }
                     }
                 }
                 MemberKind::View(v) => {
                     self.w("view =>");
                     self.arrow_rhs(m.span.start + 4, v);
+                    if !matches!(v.kind, ExprKind::Markup(_)) {
+                        self.semi();
+                    }
                 }
                 MemberKind::Option(k, v) => {
                     self.ident(k);
                     self.w(" = ");
                     self.expr(v);
+                    self.semi();
                 }
             }
             self.trailing(m.span.end);
@@ -951,7 +1015,7 @@ impl Printer<'_> {
             } else {
                 self.seq(prev, s.span.start);
             }
-            self.stmt(s);
+            self.stmt_semi(s);
             self.trailing(s.span.end);
             prev = Some(s.span.end);
         }
@@ -966,6 +1030,19 @@ impl Printer<'_> {
         self.indent -= 1;
         self.newline();
         self.w("}");
+    }
+
+    /// A statement followed by its `;` where one is allowed.
+    fn stmt_semi(&mut self, s: &Stmt) {
+        self.stmt(s);
+        let needs = match &s.kind {
+            StmtKind::Fn(f) => fn_needs_semi(f),
+            StmtKind::If(_) | StmtKind::For { .. } | StmtKind::While { .. } | StmtKind::Block(_) => false,
+            _ => true,
+        };
+        if needs {
+            self.semi();
+        }
     }
 
     fn stmt(&mut self, s: &Stmt) {
@@ -1033,7 +1110,7 @@ impl Printer<'_> {
             match &e.kind {
                 StmtKind::If(inner) => self.if_stmt(inner),
                 StmtKind::Block(b) => self.block(b),
-                _ => self.stmt(e),
+                _ => self.stmt_semi(e),
             }
         }
     }
@@ -1628,7 +1705,7 @@ impl Printer<'_> {
                 }
                 self.w("]");
             }
-            TypeKind::Object(members) => self.members(members, t.span, false),
+            TypeKind::Object(members) => self.members(members, t.span, false, false),
             TypeKind::Union(ms) | TypeKind::Intersection(ms) => {
                 let sep = if matches!(t.kind, TypeKind::Union(_)) { " | " } else { " & " };
                 for (i, m) in ms.iter().enumerate() {
@@ -1674,6 +1751,11 @@ impl Printer<'_> {
             }
         }
     }
+}
+
+/// Function declarations end in their own block, except the `= expr` form.
+fn fn_needs_semi(f: &FnDecl) -> bool {
+    matches!(f.func.body, FuncBody::Expr(_))
 }
 
 fn elem_span(a: &ArrayElem) -> Option<Span> {

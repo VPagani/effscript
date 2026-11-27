@@ -31,7 +31,15 @@ line that starts with `.`, `|>`, `catch`, `with` or a binary operator
 (except `<`, which may start markup) continues the previous expression.
 Unlike TypeScript, a line that starts with `(`, `[` or a backtick always
 starts a new statement, which avoids the classic semicolon-free pitfall
-where `foo` followed by `(bar)` becomes `foo(bar)`.
+where `foo` followed by `(bar)` becomes `foo(bar)`. Because of that, leaving
+semicolons out is always safe.
+
+`efs fmt` prints semicolons by default, following Prettier: after statements
+and line-style declarations, but not after a declaration or statement that ends
+in its own block (`function`, `if`, `for`, `while`, `service`, `machine`,
+`component`, ...), so `const f = () => { ... };` has one and `function f() { }`
+does not. Set `"fmt": { "semicolons": false }` in `efs.json` to drop them. See
+[`efs.json`](cli.md#efsjson).
 
 | EffScript | TypeScript |
 | --- | --- |

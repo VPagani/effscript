@@ -55,6 +55,17 @@ checked 4 EffScript files in 95ms, 1 error
 comment, keeps your choice of one line or several for each bracketed
 construct, and never changes the compiled output.
 
+Like Prettier for TypeScript, `efs fmt` prints a `;` after every statement and
+line-style declaration (imports, `const`/`let`, expressions, `return`, `fail`,
+`emit`, `throw`, `type`, `export { }`, service member signatures, machine
+`on`/`after` transitions, component `prop`/`let`/`event` members), and none
+after constructs that end in their own block (functions, `if`, `for`,
+`while`, `service`, `layer`, `machine`, `component`, `update { }`, ...).
+Missing semicolons are added and existing ones are kept in place. Set
+`"fmt": { "semicolons": false }` in `efs.json` to leave them out; the
+formatter then removes the ones in the source. See
+[semicolons](language.md#basics).
+
 ## `efs lint`
 
 `--deny-warnings` makes warnings fail the command, `--disable RULE` turns a
@@ -77,8 +88,9 @@ Optional configuration, read from the directory of the given path or above:
   "emit": "js",
   "declaration": true,
   "sourceMap": true,
-  "lint": { "disabled": ["unused-binding"] }
+  "lint": { "disabled": ["unused-binding"] },
+  "fmt": { "semicolons": false }
 }
 ```
 
-Command-line options take precedence.
+`fmt.semicolons` defaults to `true`. Command-line options take precedence.
