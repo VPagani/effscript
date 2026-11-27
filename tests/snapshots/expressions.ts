@@ -1,0 +1,83 @@
+import { Effect, Option, pipe, Match } from "effect"
+import type { Duration } from "effect"
+
+type Point = {
+  readonly x: number
+  y?: number
+}
+
+type Pair<A, B = A> = [first: A, second?: B]
+
+type Handler = (event: string, ...rest: unknown[]) => void
+
+type Keys = keyof Point
+
+type Coord = Point["x"]
+
+type Named = {
+  [key: string]: number
+}
+
+export function clamp(value: number, min = 0, max = 100): number {
+  if (value < min) {
+    return min
+  } else if (value > max) {
+    return max
+  }
+  return value
+}
+
+function sum(...xs: number[]): number {
+  return xs.reduce((a, b) => a + b, 0)
+}
+
+function identity<const T>(value: T): T {
+  return value
+}
+
+export function classify(n: number): string {
+  return (n === 0 ? "zero" : (n < 0 ? "negative" : "positive"))
+}
+
+export function describe(code: number | string): string {
+  return Match.value(code).pipe(
+    Match.when(200, () => "ok"),
+    Match.when("teapot", () => "short and stout"),
+    Match.orElse(() => `unknown: ${code}`)
+  )
+}
+
+function shapes() {
+  const { x, y: why = 1, ...rest } = { x: 1, y: 2, z: 3 }
+  const [first, , third = 3, ...others] = [1, 2, 3, 4]
+  let total = 0
+  for (const n of [1, 2, 3]) {
+    total += n
+  }
+  while (total > 0) {
+    total--
+    if (total === 2) {
+      break
+    }
+  }
+  const point = { x, why, rest, first, third, others, [`k${total}`]: total, "quoted": true }
+  const nested = point?.rest?.["z"] ?? 0
+  const casted = (nested as number) satisfies number
+  const maybe = document.getElementById("app")!
+  const map = new Map<string, number>([["a", 1]])
+  const typed = identity<number>(1)
+  const neg = -casted + +typed
+  const flags = !maybe && typeof map === "object"
+  const pow = 2 ** 3 ** 2
+  const shifted = (1 << 3) >> 1
+  const arrows = [(a: number) => a * 2, () => ({ ok: true }), (x: number) => {
+    return x
+  }]
+  return { point, nested, map, neg, flags, pow, shifted, arrows }
+}
+
+export const piped = pipe(5, ((n: number) => n + 1), String)
+
+export const optionValue = pipe(Option.some(1), Option.map((n) => n + 1))
+
+export const delayed = Effect.sleep("1 second" as Duration.Input)
