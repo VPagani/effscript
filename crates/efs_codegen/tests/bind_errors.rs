@@ -112,3 +112,9 @@ fn shadowed_names_are_left_to_the_type_checker() {
     );
     assert!(e.is_empty(), "{e:?}");
 }
+
+#[test]
+fn run_outside_an_effect_is_reported_once() {
+    let out = efs_codegen::compile("const x = run Console.log(1);\n", &Default::default());
+    assert_eq!(out.diagnostics.len(), 1, "{:?}", out.diagnostics);
+}

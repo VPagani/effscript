@@ -69,6 +69,8 @@ pub fn compile(src: &str, options: &Options) -> Output {
     let parsed = efs_syntax::parse(src);
     let mut out = compile_module(src, &parsed.module, options);
     let mut diagnostics = parsed.diagnostics;
+    // The parser and the code generator check some rules both; report each problem once.
+    out.diagnostics.retain(|d| !diagnostics.iter().any(|p| p.span.start == d.span.start));
     diagnostics.append(&mut out.diagnostics);
     out.diagnostics = diagnostics;
     out
