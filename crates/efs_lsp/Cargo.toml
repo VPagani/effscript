@@ -1,0 +1,19 @@
+[package]
+name = "efs_lsp"
+description = "The EffScript language server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+efs_syntax.workspace = true
+efs_codegen.workspace = true
+efs_fmt.workspace = true
+efs_lint.workspace = true
+efs_check.workspace = true
+lsp-server.workspace = true
+lsp-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
