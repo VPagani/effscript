@@ -28,7 +28,7 @@ Silence a rule for one line with a comment on the line above:
 
 ```efs
 // efs-ignore: unused-binding
-const draft = run load()
+const draft = run load();
 ```
 
 `// efs-ignore` alone silences every rule for that line. To turn a rule off

@@ -22,18 +22,18 @@ export const MailerConsole = Layer.succeed(Mailer, { send: (to, body) => Effect.
 
 ```efs
 // onboarding.efs
-import { Mailer, MailerConsole } from "./legacy/mailer.js"
+import { Mailer, MailerConsole } from "./legacy/mailer.js";
 
 export effect function onboard(to: string) {
-  const mailer = use Mailer
-  run mailer.send(to, "Welcome!")
+  const mailer = use Mailer;
+  run mailer.send(to, "Welcome!");
 }
 
 export const onboarding = onboard("ada@example.com")
   catch {
     MailError(e) => Effect.logWarning(e.reason)
   }
-  with MailerConsole
+  with MailerConsole;
 ```
 
 ```ts

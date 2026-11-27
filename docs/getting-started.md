@@ -33,21 +33,21 @@ use `efs build --emit js`, or use a [bundler plugin](bundlers.md).
 ## A first program
 
 ```efs
-import { Console } from "effect"
+import { Console } from "effect";
 
 error EmptyName
 
 effect function greet(name: string) {
   if name.length == 0 {
-    fail new EmptyName()
+    fail new EmptyName();
   }
-  run Console.log(`Hello, ${name}!`)
+  run Console.log(`Hello, ${name}!`);
 }
 
 export const main = greet("Effect")
   catch {
     EmptyName => Console.log("Who are you?")
-  }
+  };
 ```
 
 `effect function` and `run` work like `async function` and `await`: `run`

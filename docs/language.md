@@ -75,15 +75,15 @@ result, and `use` gets a service.
 
 ```efs
 export effect function transfer(from: AccountId, to: AccountId, amount: number) {
-  const accounts = use Accounts
-  const source = run accounts.get(from)
+  const accounts = use Accounts;
+  const source = run accounts.get(from);
   if source.balance < amount {
-    fail new InsufficientFunds({ needed: amount, available: source.balance })
+    fail new InsufficientFunds({ needed: amount, available: source.balance });
   }
-  run accounts.withdraw(from, amount)
-  run accounts.deposit(to, amount)
-  defer Console.log("transfer finished")
-  return source
+  run accounts.withdraw(from, amount);
+  run accounts.deposit(to, amount);
+  defer Console.log("transfer finished");
+  return source;
 }
 ```
 
@@ -136,9 +136,9 @@ yielded, but they mean different things, and EffScript keeps them apart:
 
 ```efs
 export effect function onboard(id: UserId) {
-  const repo = use UserRepo      // a dependency, provided by `with UserRepoLive`
-  const user = run repo.find(id) // work
-  return user
+  const repo = use UserRepo;      // a dependency, provided by `with UserRepoLive`
+  const user = run repo.find(id); // work
+  return user;
 }
 ```
 
@@ -166,9 +166,9 @@ export const greeting = currentUser()
   catch {
     UserNotFound(e) => Effect.succeed(`nobody called ${e.id}`)
     TimeoutError => Effect.succeed("too slow")
-  }
+  };
 
-export const main = greeting with AppLive
+export const main = greeting with AppLive;
 ```
 
 | EffScript | TypeScript |
@@ -190,7 +190,7 @@ function area(shape: Shape): number =
     Circle({ radius }) => Math.PI * radius ** 2
     Square({ side }) => side * side
     Point => 0
-  }
+  };
 ```
 
 When every arm is a tag, `match` compiles to `Match.valueTags(shape, { ... })`,
@@ -202,28 +202,28 @@ Match.when(...), Match.orElse(...))` chain (`Match.exhaustive` without `_`).
 
 ```efs
 service UserRepo {
-  find(id: UserId): Effect<User, UserNotFound>
-  all: Effect<readonly User[]>
+  find(id: UserId): Effect<User, UserNotFound>;
+  all: Effect<readonly User[]>;
 }
 
 layer UserRepoLive for UserRepo {
-  const sql = use Sql
+  const sql = use Sql;
   return {
     effect find(id: UserId) {
-      const row = run sql.one(id)
+      const row = run sql.one(id);
       if row == undefined {
-        fail new UserNotFound({ id })
+        fail new UserNotFound({ id });
       }
-      return row
+      return row;
     },
     all: sql.all,
-  }
+  };
 }
 
 layer UserRepoTest for UserRepo = {
   find: (id) => Effect.fail(new UserNotFound({ id })),
   all: Effect.succeed([]),
-}
+};
 ```
 
 | EffScript | TypeScript |
@@ -242,7 +242,7 @@ layer UserRepoTest for UserRepo = {
 error UserNotFound { id: UserId }
 error Unauthorized
 
-schema UserId = String & Brand<"UserId">
+schema UserId = String & Brand<"UserId">;
 
 schema User {
   id: UserId
@@ -255,7 +255,7 @@ schema User {
 
 schema class Account { owner: UserId, balance: Number }
 tagged schema Deposited { amount: Number }
-schema LedgerEntry = Deposited | Withdrew
+schema LedgerEntry = Deposited | Withdrew;
 
 enum Shape {
   Circle { radius: number }
@@ -317,21 +317,21 @@ machine Search {
   }
 
   initial state Idle {
-    on Search if event.query.length > 0 -> Loading { query: event.query }
+    on Search if event.query.length > 0 -> Loading { query: event.query };
   }
   state Loading(query: String) {
-    on Reset -> Idle
+    on Reset -> Idle;
     invoke load(state.query) {
-      done -> Ready { items: output }
-      failure -> Failed { message: error.message }
+      done -> Ready { items: output };
+      failure -> Failed { message: error.message };
     }
-    after "5 seconds" -> Failed { message: "timed out" }
+    after "5 seconds" -> Failed { message: "timed out" };
   }
   state Ready(items: String[]) {
-    on Reset -> Idle
+    on Reset -> Idle;
   }
   state Failed(message: String) {
-    on Reset -> Idle
+    on Reset -> Idle;
   }
 }
 
@@ -340,7 +340,7 @@ machine Counter {
   events {
     Increment { by: Number }
   }
-  on Increment update root { count: root.count + event.by }
+  on Increment update root { count: root.count + event.by };
 }
 ```
 
@@ -376,19 +376,19 @@ builder. A component is a list of declarations:
 
 ```efs
 component Counter {
-  prop label: String
-  let count: Number = 0
-  let history: Number[] = []
-  event Reset
+  prop label: String;
+  let count: Number = 0;
+  let history: Number[] = [];
+  event Reset;
 
   update ClickedIncrement(amount: Number) {
-    count += amount
-    history = [...history, count]
+    count += amount;
+    history = [...history, count];
   }
 
   update ClickedReset {
-    count = 0
-    emit Reset()
+    count = 0;
+    emit Reset();
   }
 
   view =>

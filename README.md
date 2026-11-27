@@ -6,21 +6,21 @@ TypeScript you would write by hand, minus the incantations. If you know
 `async function` and `await`, you already know `effect function` and `run`.
 
 ```efs
-import { Effect, Schedule } from "effect"
+import { Effect, Schedule } from "effect";
 
 error UserNotFound { id: UserId }
 
 service UserRepo {
-  find(id: UserId): Effect<User, UserNotFound>
+  find(id: UserId): Effect<User, UserNotFound>;
 }
 
 export effect function greet(id: UserId) {
-  const repo = use UserRepo
+  const repo = use UserRepo;
   const user = run repo.find(id)
     |> Effect.retry(Schedule.recurs(2))
-    |> Effect.timeout("1 second")
-  run Effect.log(`Hello, ${user.name}`)
-  return user
+    |> Effect.timeout("1 second");
+  run Effect.log(`Hello, ${user.name}`);
+  return user;
 }
 
 export const main = greet(UserId.make("u-1"))
@@ -28,7 +28,7 @@ export const main = greet(UserId.make("u-1"))
     UserNotFound(e) => Effect.log(`no user ${e.id}`)
     TimeoutError => Effect.log("too slow")
   }
-  with UserRepoLive
+  with UserRepoLive;
 ```
 
 - **Plain output.** It compiles to ordinary Effect code (`Effect.fn`,
