@@ -1,0 +1,141 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "EffScript",
+  "scopeName": "source.efs",
+  "patterns": [{ "include": "#code" }],
+  "repository": {
+    "code": {
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        { "include": "#markup" },
+        { "include": "#declarations" },
+        { "include": "#keywords" },
+        { "include": "#numbers" },
+        { "include": "#operators" },
+        { "include": "#types" },
+        { "include": "#calls" }
+      ]
+    },
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.efs", "match": "//.*$" },
+        { "name": "comment.block.efs", "begin": "/\\*", "end": "\\*/" }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        { "name": "string.quoted.double.efs", "begin": "\"", "end": "\"|$", "patterns": [{ "name": "constant.character.escape.efs", "match": "\\\\." }] },
+        { "name": "string.quoted.single.efs", "begin": "'", "end": "'|$", "patterns": [{ "name": "constant.character.escape.efs", "match": "\\\\." }] },
+        {
+          "name": "string.template.efs",
+          "begin": "`",
+          "end": "`",
+          "patterns": [
+            { "name": "constant.character.escape.efs", "match": "\\\\." },
+            {
+              "name": "meta.template.expression.efs",
+              "begin": "\\$\\{",
+              "beginCaptures": { "0": { "name": "punctuation.definition.template-expression.begin.efs" } },
+              "end": "\\}",
+              "endCaptures": { "0": { "name": "punctuation.definition.template-expression.end.efs" } },
+              "patterns": [{ "include": "#code" }]
+            }
+          ]
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "\\b(service|layer|error|schema|enum|machine|component|type)\\s+(class\\s+)?([A-Za-z_$][\\w$]*)",
+          "captures": {
+            "1": { "name": "storage.type.efs" },
+            "2": { "name": "storage.modifier.efs" },
+            "3": { "name": "entity.name.type.efs" }
+          }
+        },
+        {
+          "match": "\\b(tagged)\\s+(schema)\\s+([A-Za-z_$][\\w$]*)",
+          "captures": {
+            "1": { "name": "storage.modifier.efs" },
+            "2": { "name": "storage.type.efs" },
+            "3": { "name": "entity.name.type.efs" }
+          }
+        },
+        {
+          "match": "\\b(effect\\s+)?(function)\\s+([A-Za-z_$][\\w$]*)",
+          "captures": {
+            "1": { "name": "storage.modifier.efs" },
+            "2": { "name": "storage.type.function.efs" },
+            "3": { "name": "entity.name.function.efs" }
+          }
+        },
+        {
+          "match": "\\b(final\\s+|parallel\\s+)*(state)\\s+([A-Za-z_$][\\w$]*)",
+          "captures": {
+            "1": { "name": "storage.modifier.efs" },
+            "2": { "name": "storage.type.efs" },
+            "3": { "name": "entity.name.type.efs" }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        { "name": "keyword.control.efs", "match": "\\b(if|else|for|of|while|return|break|continue|match|catch|fail|defer|throw|with|run)\\b" },
+        { "name": "keyword.control.effect.efs", "match": "\\b(effect|on|invoke|after|initial|update|stay|view|prop|event|emit|events|effects|streams|timers|root|input)\\b" },
+        { "name": "keyword.other.efs", "match": "\\b(import|export|from|as|type|satisfies|new|typeof|keyof|readonly|instanceof|in|for)\\b" },
+        { "name": "storage.type.efs", "match": "\\b(const|let|function)\\b" },
+        { "name": "constant.language.efs", "match": "\\b(true|false|null|undefined)\\b" }
+      ]
+    },
+    "numbers": {
+      "name": "constant.numeric.efs",
+      "match": "\\b(0[xXbBoO][\\da-fA-F_]+|\\d[\\d_]*(\\.\\d+)?([eE][+-]?\\d+)?n?)\\b"
+    },
+    "operators": {
+      "patterns": [
+        { "name": "keyword.operator.pipe.efs", "match": "\\|>" },
+        { "name": "keyword.operator.transition.efs", "match": "->" },
+        { "name": "storage.type.function.arrow.efs", "match": "=>" },
+        { "name": "keyword.operator.efs", "match": "[=!<>]=?|&&|\\|\\||\\?\\?|\\?\\.|[-+*/%&|^~?:]" }
+      ]
+    },
+    "types": {
+      "name": "entity.name.type.efs",
+      "match": "\\b[A-Z][\\w$]*\\b"
+    },
+    "calls": {
+      "match": "\\b([a-z_$][\\w$]*)\\s*(?=\\()",
+      "captures": { "1": { "name": "entity.name.function.efs" } }
+    },
+    "markup": {
+      "patterns": [
+        {
+          "name": "meta.tag.efs",
+          "begin": "(<)([A-Za-z][\\w.]*)(?=[\\s/>])",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.tag.begin.efs" },
+            "2": { "name": "entity.name.tag.efs" }
+          },
+          "end": "(/?>)",
+          "endCaptures": { "1": { "name": "punctuation.definition.tag.end.efs" } },
+          "patterns": [
+            { "match": "\\b(on:[\\w|]+|[\\w-]+)(?==)", "name": "entity.other.attribute-name.efs" },
+            { "include": "#strings" },
+            { "begin": "\\{", "end": "\\}", "patterns": [{ "include": "#code" }] }
+          ]
+        },
+        {
+          "match": "(</)([A-Za-z][\\w.]*)(>)",
+          "captures": {
+            "1": { "name": "punctuation.definition.tag.begin.efs" },
+            "2": { "name": "entity.name.tag.efs" },
+            "3": { "name": "punctuation.definition.tag.end.efs" }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "effscript-vscode",
+  "displayName": "EffScript",
+  "description": "EffScript language support: a readable syntax for Effect",
+  "version": "0.1.0",
+  "publisher": "vpagani",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/VPagani/effscript" },
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Programming Languages", "Formatters", "Linters"],
+  "activationEvents": ["onLanguage:efs"],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "efs",
+        "aliases": ["EffScript", "efs"],
+        "extensions": [".efs"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      { "language": "efs", "scopeName": "source.efs", "path": "./syntaxes/efs.tmLanguage.json" }
+    ],
+    "commands": [
+      { "command": "efs.showGeneratedTypeScript", "title": "EffScript: Show Generated TypeScript" },
+      { "command": "efs.restartServer", "title": "EffScript: Restart Language Server" }
+    ],
+    "configuration": {
+      "title": "EffScript",
+      "properties": {
+        "efs.path": {
+          "type": "string",
+          "default": "efs",
+          "description": "Path to the `efs` executable."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}
