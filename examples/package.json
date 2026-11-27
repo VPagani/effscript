@@ -7,7 +7,7 @@
     "check": "efs check"
   },
   "dependencies": {
-    "@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@main",
+    "@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@9dc3482",
     "@typeonce/effect-machine": "0.47.1",
     "effect": "4.1.6"
   }
