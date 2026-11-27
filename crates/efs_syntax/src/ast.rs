@@ -119,6 +119,7 @@ pub struct Func {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum FuncBody {
+    /// An arrow function's expression body: `(x) => x + 1`.
     Expr(Box<Expr>),
     Block(Block),
 }

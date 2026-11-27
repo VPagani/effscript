@@ -33,17 +33,13 @@ export class Unauthorized extends Data.TaggedError("Unauthorized") {}
 
 export const Shape = Data.taggedEnum()
 
-export function area(shape) {
-  return Match.valueTags(shape, {
-    Circle: ({ radius }) => Math.PI * radius ** 2,
-    Square: ({ side }) => side * side,
-    Point: () => 0
-  })
-}
+export const area = (shape) => Match.valueTags(shape, {
+  Circle: ({ radius }) => Math.PI * radius ** 2,
+  Square: ({ side }) => side * side,
+  Point: () => 0
+})
 
-export function describe(entry) {
-  return Match.valueTags(entry, {
-    Deposited: (d) => `+${d.amount}`,
-    Withdrew: (w) => `-${w.amount}`
-  })
-}
+export const describe = (entry) => Match.valueTags(entry, {
+  Deposited: (d) => `+${d.amount}`,
+  Withdrew: (w) => `-${w.amount}`
+})

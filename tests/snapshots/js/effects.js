@@ -73,9 +73,7 @@ function run(task) {
 
 export const ran = run("build")
 
-function use(n) {
-  return n + 1
-}
+const use = (n) => n + 1
 
 export const usedTwice = Effect.gen(function* () {
   return use(use(1))
@@ -88,9 +86,7 @@ export const sumBoth = Effect.gen(function* () {
   return b
 })
 
-export function backoff(Schedule) {
-  return Schedule * 2
-}
+export const backoff = (Schedule) => Schedule * 2
 
 export const shadowed = Effect.gen(function* () {
   const Console = {

@@ -1,7 +1,7 @@
 // A statechart with @typeonce/effect-machine.
 import { Machine } from "@typeonce/effect-machine";
 
-function searchItems(query: string): Effect<string[]> =
+const searchItems = (query: string): Effect<string[]> =>
   Effect.succeed([query, `${query}!`]);
 
 export machine Search {

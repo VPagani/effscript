@@ -83,7 +83,7 @@ fn use_gets_a_service_by_name() {
 
 #[test]
 fn use_is_an_ordinary_name_unless_a_name_follows() {
-    let src = "function use(x: number): number = x + 1\nconst a = use(1)\nconst use2 = use\nconst b = x.use\nconst o = { use: 1 }\neffect function f() {\n  const c = use(2)\n  const d = o.use\n  use\n  return use as number\n}";
+    let src = "function use(x: number): number {\n  return x + 1\n}\nconst a = use(1)\nconst use2 = use\nconst b = x.use\nconst o = { use: 1 }\neffect function f() {\n  const c = use(2)\n  const d = o.use\n  use\n  return use as number\n}";
     assert!(errors(src).is_empty(), "{:?}", errors(src));
     assert!(bind_kinds(src).is_empty());
     assert!(errors("const use = 1\nconst x = use + 1").is_empty());

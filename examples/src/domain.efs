@@ -36,14 +36,14 @@ export enum Shape {
   Point
 }
 
-export function area(shape: Shape): number =
+export const area = (shape: Shape): number =>
   match shape {
     Circle({ radius }) => Math.PI * radius ** 2
     Square({ side }) => side * side
     Point => 0
   };
 
-export function describe(entry: LedgerEntry): string =
+export const describe = (entry: LedgerEntry): string =>
   match entry {
     Deposited(d) => `+${d.amount}`
     Withdrew(w) => `-${w.amount}`

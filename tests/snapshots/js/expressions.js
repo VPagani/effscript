@@ -9,25 +9,17 @@ export function clamp(value, min = 0, max = 100) {
   return value
 }
 
-function sum(...xs) {
-  return xs.reduce((a, b) => a + b, 0)
-}
+const sum = (...xs) => xs.reduce((a, b) => a + b, 0)
 
-function identity(value) {
-  return value
-}
+const identity = (value) => value
 
-export function classify(n) {
-  return (n === 0 ? "zero" : (n < 0 ? "negative" : "positive"))
-}
+export const classify = (n) => (n === 0 ? "zero" : (n < 0 ? "negative" : "positive"))
 
-export function describe(code) {
-  return Match.value(code).pipe(
-    Match.when(200, () => "ok"),
-    Match.when("teapot", () => "short and stout"),
-    Match.orElse(() => `unknown: ${code}`)
-  )
-}
+export const describe = (code) => Match.value(code).pipe(
+  Match.when(200, () => "ok"),
+  Match.when("teapot", () => "short and stout"),
+  Match.orElse(() => `unknown: ${code}`)
+)
 
 function shapes() {
   const { x, y: why = 1, ...rest } = { x: 1, y: 2, z: 3 }

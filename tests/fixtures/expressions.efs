@@ -18,14 +18,14 @@ export function clamp(value: number, min = 0, max = 100): number {
   return value;
 }
 
-function sum(...xs: number[]): number = xs.reduce((a, b) => a + b, 0);
+const sum = (...xs: number[]): number => xs.reduce((a, b) => a + b, 0);
 
-function identity<const T>(value: T): T = value;
+const identity = <const T>(value: T): T => value;
 
-export function classify(n: number): string =
+export const classify = (n: number): string =>
   if n == 0 { "zero" } else if n < 0 { "negative" } else { "positive" };
 
-export function describe(code: number | string): string =
+export const describe = (code: number | string): string =>
   match code {
     200 => "ok"
     "teapot" => "short and stout"

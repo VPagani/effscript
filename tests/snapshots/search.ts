@@ -1,9 +1,7 @@
 import { Effect, Schema, pipe } from "effect"
 import { Machine } from "@typeonce/effect-machine"
 
-function searchItems(query: string): Effect.Effect<string[]> {
-  return Effect.succeed([query, `${query}!`])
-}
+const searchItems = (query: string): Effect.Effect<string[]> => Effect.succeed([query, `${query}!`])
 
 export const SearchState = Machine.state({ states: {
   Idle: {},

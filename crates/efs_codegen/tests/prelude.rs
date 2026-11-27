@@ -66,7 +66,7 @@ fn type_only_uses_are_imported_in_typescript() {
 
 #[test]
 fn type_only_uses_are_not_imported_in_javascript() {
-    let src = "function run(job: Effect<number>, o: Option<string>): number = 1;\nexport const x = run;\n";
+    let src = "function run(job: Effect<number>, o: Option<string>): number {\n  return 1;\n}\nexport const x = run;\n";
     let out = js(src);
     assert!(!out.code.contains("import"), "{}", out.code);
     // A value use is.
@@ -108,7 +108,9 @@ fn explicit_imports_win() {
 #[test]
 fn inner_bindings_shadow_the_prelude() {
     let src = "\
-export function f(Schedule: number): number = Schedule + 1;
+export function f(Schedule: number): number {
+  return Schedule + 1;
+}
 export const g = (Option: string) => Option.length;
 export function h() {
   const Console = { log: (s: string) => s };
@@ -118,7 +120,9 @@ export const i = [1].map((x) => {
   for Ref of [x] { return Ref; }
   return x;
 });
-export function j<Fiber>(x: Fiber): Fiber = x;
+export function j<Fiber>(x: Fiber): Fiber {
+  return x;
+}
 ";
     let out = ts(src);
     assert!(!out.code.contains("import"), "{}", out.code);

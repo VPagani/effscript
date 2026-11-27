@@ -265,12 +265,7 @@ impl Printer<'_> {
                 self.let_decl(l);
                 self.semi();
             }
-            ItemKind::Fn(f) => {
-                self.fn_decl(f);
-                if fn_needs_semi(f) {
-                    self.semi();
-                }
-            }
+            ItemKind::Fn(f) => self.fn_decl(f),
             ItemKind::Type(t) => {
                 self.w("type ");
                 self.ident(&t.name);
@@ -397,23 +392,11 @@ impl Printer<'_> {
             self.w(": ");
             self.ty(r);
         }
-        match &func.body {
-            FuncBody::Block(b) => {
-                self.w(" ");
-                self.block(b);
-            }
-            FuncBody::Expr(e) => {
-                self.w(" =");
-                if self.has_newline(func.ret.as_ref().map_or(func.span.start, |r| r.span.end), e.span.start) {
-                    self.indent += 1;
-                    self.newline();
-                    self.expr(e);
-                    self.indent -= 1;
-                } else {
-                    self.w(" ");
-                    self.expr(e);
-                }
-            }
+        // Only arrow functions have expression bodies; the parser reads the removed
+        // `function f() = expr` form as a block.
+        if let FuncBody::Block(b) = &func.body {
+            self.w(" ");
+            self.block(b);
         }
     }
 
@@ -1060,12 +1043,12 @@ impl Printer<'_> {
     /// A statement followed by its `;` where one is allowed.
     fn stmt_semi(&mut self, s: &Stmt) {
         self.stmt(s);
-        let needs = match &s.kind {
-            StmtKind::Fn(f) => fn_needs_semi(f),
-            StmtKind::If(_) | StmtKind::For { .. } | StmtKind::While { .. } | StmtKind::Block(_) => false,
-            _ => true,
-        };
-        if needs {
+        // Declarations and statements that end in their own block take no `;`.
+        let ends_in_block = matches!(
+            s.kind,
+            StmtKind::Fn(_) | StmtKind::If(_) | StmtKind::For { .. } | StmtKind::While { .. } | StmtKind::Block(_)
+        );
+        if !ends_in_block {
             self.semi();
         }
     }
@@ -1776,11 +1759,6 @@ impl Printer<'_> {
             }
         }
     }
-}
-
-/// Function declarations end in their own block, except the `= expr` form.
-fn fn_needs_semi(f: &FnDecl) -> bool {
-    matches!(f.func.body, FuncBody::Expr(_))
 }
 
 fn elem_span(a: &ArrayElem) -> Option<Span> {

@@ -46,7 +46,6 @@ does not. Set `"fmt": { "semicolons": false }` in `efs.json` to drop them. See
 | --- | --- |
 | `const x = 1` | `const x = 1` |
 | `let n = 0` | `let n = 0` |
-| `function add(a: number, b: number): number = a + b` | `function add(a: number, b: number): number { return a + b }` |
 | `function f(x) { ... }` | `function f(x) { ... }` |
 | `(x) => x + 1`, `function (x) { ... }` | arrow functions |
 | `a == b`, `a != b` | `a === b`, `a !== b` |
@@ -186,7 +185,7 @@ effects in one, use `effect { ... }`.
 ## Matching
 
 ```efs
-function area(shape: Shape): number =
+const area = (shape: Shape): number =>
   match shape {
     Circle({ radius }) => Math.PI * radius ** 2
     Square({ side }) => side * side

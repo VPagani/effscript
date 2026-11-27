@@ -48,17 +48,13 @@ export type Shape = Data.TaggedEnum<{
 }>
 export const Shape = Data.taggedEnum<Shape>()
 
-export function area(shape: Shape): number {
-  return Match.valueTags(shape, {
-    Circle: ({ radius }) => Math.PI * radius ** 2,
-    Square: ({ side }) => side * side,
-    Point: () => 0
-  })
-}
+export const area = (shape: Shape): number => Match.valueTags(shape, {
+  Circle: ({ radius }) => Math.PI * radius ** 2,
+  Square: ({ side }) => side * side,
+  Point: () => 0
+})
 
-export function describe(entry: LedgerEntry): string {
-  return Match.valueTags(entry, {
-    Deposited: (d) => `+${d.amount}`,
-    Withdrew: (w) => `-${w.amount}`
-  })
-}
+export const describe = (entry: LedgerEntry): string => Match.valueTags(entry, {
+  Deposited: (d) => `+${d.amount}`,
+  Withdrew: (w) => `-${w.amount}`
+})

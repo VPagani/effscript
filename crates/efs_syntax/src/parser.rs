@@ -20,6 +20,30 @@ pub fn parse(src: &str) -> ParseResult {
     ParseResult { module, comments: p.comments.into_values().collect(), diagnostics: p.diags }
 }
 
+/// Where a function with a body is written, for the message about the removed `= expr` body.
+enum FnForm<'a> {
+    /// `function name(...)`
+    Decl(&'a str),
+    /// `function (...)`
+    Expr,
+    /// `name(...)` in an object literal.
+    Method(&'a str),
+}
+
+/// The error for `function f(x) = expr`, with the code to write instead. `sig` is the
+/// signature as written: type parameters, parameters and return type.
+fn removed_expr_body(effect: bool, sig: &str, form: &FnForm) -> String {
+    let fix = match (form, effect) {
+        (FnForm::Decl(name), false) => format!("`const {name} = {sig} => ...`"),
+        (FnForm::Decl(name), true) => format!("a block: `effect function {name}{sig} {{ return ...; }}`"),
+        (FnForm::Expr, false) => format!("an arrow function: `{sig} => ...`"),
+        (FnForm::Expr, true) => format!("an arrow function: `effect {sig} => ...`"),
+        (FnForm::Method(key), false) => format!("`{key}: {sig} => ...` or a block: `{key}{sig} {{ return ...; }}`"),
+        (FnForm::Method(key), true) => format!("a block: `effect {key}{sig} {{ return ...; }}`"),
+    };
+    format!("`= expr` function bodies were removed; write {fix}")
+}
+
 /// Parses a single expression (used by tests and tooling).
 pub fn parse_expr(src: &str) -> (Expr, Vec<Diagnostic>) {
     let mut p = Parser::new(src);
@@ -472,18 +496,31 @@ impl<'a> Parser<'a> {
         let start = self.start();
         self.expect("function");
         let name = self.ident();
-        let func = self.func_rest(effect, start);
+        let func = self.func_rest(effect, start, FnForm::Decl(&name.name));
         FnDecl { name, func }
     }
 
-    /// Parses `<T>(params): Ret { body }` or `(params) = expr`.
-    fn func_rest(&mut self, effect: bool, start: u32) -> Func {
+    /// Parses `<T>(params): Ret { body }`.
+    fn func_rest(&mut self, effect: bool, start: u32, form: FnForm) -> Func {
+        let sig_start = self.peek().span.start;
         let type_params = self.type_params();
         let params = self.params();
         let ret = if self.eat(":") { Some(self.ty()) } else { None };
         let saved = std::mem::replace(&mut self.in_effect, effect);
         let saved_update = std::mem::replace(&mut self.in_update, false);
-        let body = if self.eat("=") { FuncBody::Expr(Box::new(self.expr())) } else { FuncBody::Block(self.block()) };
+        let body = if self.is("=") {
+            // The removed `function f(x) = expr` form: report it with its replacement and
+            // read the expression as `{ return expr }`.
+            let sig = Span::new(sig_start, self.prev_end.max(sig_start)).text(self.src).trim().to_string();
+            let eq = self.bump();
+            let sig = if sig.len() <= 60 && !sig.contains('\n') { sig } else { "(...)".to_string() };
+            self.error(eq.span, removed_expr_body(effect, &sig, &form));
+            let value = self.expr();
+            let span = value.span;
+            FuncBody::Block(Block { stmts: vec![Stmt { kind: StmtKind::Return(Some(value)), span }], span })
+        } else {
+            FuncBody::Block(self.block())
+        };
         self.in_effect = saved;
         self.in_update = saved_update;
         Func { effect, arrow: false, type_params, params, ret, body, span: self.span_from(start) }
@@ -1690,7 +1727,7 @@ impl<'a> Parser<'a> {
                 "effect" if self.is_n(1, "function") => {
                     self.bump();
                     self.bump();
-                    let f = self.func_rest(true, start);
+                    let f = self.func_rest(true, start, FnForm::Expr);
                     return Expr { kind: ExprKind::Func(Box::new(f)), span: self.span_from(start) };
                 }
                 "effect"
@@ -1726,7 +1763,7 @@ impl<'a> Parser<'a> {
                 }
                 "function" if self.is_n(1, "(") || self.is_n(1, "<") => {
                     self.bump();
-                    let f = self.func_rest(false, start);
+                    let f = self.func_rest(false, start, FnForm::Expr);
                     return Expr { kind: ExprKind::Func(Box::new(f)), span: self.span_from(start) };
                 }
                 "if" => return self.if_expr(),
@@ -1831,7 +1868,8 @@ impl<'a> Parser<'a> {
                 }
                 let key = self.prop_key();
                 if self.is("(") || self.is("<") {
-                    let func = self.func_rest(effect, fstart);
+                    let key_text = key.span().text(self.src).to_string();
+                    let func = self.func_rest(effect, fstart, FnForm::Method(&key_text));
                     props.push(Prop::Method { key, func });
                 } else if self.eat(":") {
                     props.push(Prop::KeyValue { key, value: self.expr() });

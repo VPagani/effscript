@@ -78,12 +78,14 @@ export const traced = effect function (n: number) {
 export const doubled = effect (n: number) => run Effect.succeed(n * 2);
 
 // Outside effect bodies `run` is an ordinary name.
-function run(task: string): string = `ran ${task}`;
+function run(task: string): string {
+  return `ran ${task}`;
+}
 
 export const ran = run("build");
 
 // `use` is a keyword only before a name, so it can be an ordinary name too.
-function use(n: number): number = n + 1;
+const use = (n: number): number => n + 1;
 
 export const usedTwice = effect {
   return use(use(1));
@@ -99,7 +101,7 @@ export const sumBoth = effect {
 };
 
 // Local bindings shadow prelude names where they are in scope; `Clock` above is declared here.
-export function backoff(Schedule: number): number = Schedule * 2;
+export const backoff = (Schedule: number): number => Schedule * 2;
 
 export const shadowed = effect {
   const Console = { log: (message: string) => Effect.log(message) };
