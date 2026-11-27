@@ -62,3 +62,30 @@ fn ambiguous_names() {
     assert!(has(&e, "already declared as a prop"), "{e:?}");
     assert!(has(&e, "is both a message and an event"), "{e:?}");
 }
+
+fn machine_errors(body: &str) -> Vec<String> {
+    let src = format!("machine M {{\n  events {{ Go }}\n{body}\n}}\n");
+    efs_codegen::compile(&src, &Default::default()).diagnostics.into_iter().map(|d| d.message).collect()
+}
+
+#[test]
+fn initial_state_rules() {
+    let e = machine_errors("  initial A\n  state A");
+    assert!(has(&e, "mark the state itself instead: `initial state A`"), "{e:?}");
+    let e = machine_errors("  initial state A\n  initial state B");
+    assert!(has(&e, "`B` is not the only initial state"), "{e:?}");
+    let e = machine_errors("  initial state A(n: Number)");
+    assert!(has(&e, "`n` needs a default value"), "{e:?}");
+    let e = machine_errors("  initial state A {\n    on Go -> B { n: 1 }\n  }\n  state B(n: Number = 0)");
+    assert!(has(&e, "field defaults are the starting data of the initial state"), "{e:?}");
+    let out = efs_codegen::compile(
+        "machine M {\n  input Number\n  events { Go }\n  initial state A(n: Number = input, m: Number = 2)\n}\n",
+        &Default::default(),
+    );
+    assert!(out.diagnostics.is_empty(), "{:?}", out.diagnostics);
+    assert!(
+        out.code.contains(r#"initial: { target: "A", data: ({ input }) => ({ n: input, m: 2 }) }"#),
+        "{}",
+        out.code
+    );
+}

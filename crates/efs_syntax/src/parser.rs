@@ -716,19 +716,29 @@ impl<'a> Parser<'a> {
 
     /// Parses one entry of a state body. Returns false if nothing matched.
     fn state_body_entry(&mut self, body: &mut StateBody) -> bool {
-        if self.eat("initial") {
-            body.initial = Some(self.target_after_arrow(false));
+        if self.is("initial") && !(self.is_n(1, "state") || self.is_n(1, "final") || self.is_n(1, "parallel")) {
+            let t = self.bump();
+            let target = self.peek();
+            let name = self.text(target).to_string();
+            self.error(
+                t.span,
+                format!("mark the state itself instead: `initial state {name}`, with its data as field defaults"),
+            );
+            self.target_after_arrow(false);
             return true;
         }
-        if self.is("state") || self.is("final") || self.is("parallel") {
+        if self.is("state") || self.is("final") || self.is("parallel") || self.is("initial") {
             let start = self.start();
             let mut is_final = false;
             let mut parallel = false;
+            let mut is_initial = false;
             loop {
                 if self.eat("final") {
                     is_final = true;
                 } else if self.eat("parallel") {
                     parallel = true;
+                } else if self.eat("initial") {
+                    is_initial = true;
                 } else {
                     break;
                 }
@@ -752,7 +762,15 @@ impl<'a> Parser<'a> {
                 }
                 self.expect("}");
             }
-            body.states.push(StateDecl { name, is_final, parallel, fields, body: sub, span: self.span_from(start) });
+            body.states.push(StateDecl {
+                name,
+                is_initial,
+                is_final,
+                parallel,
+                fields,
+                body: sub,
+                span: self.span_from(start),
+            });
             return true;
         }
         if self.is("on") && self.peek_n(1).kind == TokenKind::Ident {

@@ -274,9 +274,7 @@ machine Search {
     load = (query: string) => searchItems(query)
   }
 
-  initial Idle
-
-  state Idle {
+  initial state Idle {
     on Search if event.query.length > 0 -> Loading { query: event.query }
   }
   state Loading(query: String) {
@@ -314,7 +312,7 @@ Send events with `SearchEvents.Search({ query })`.
 | `final state Name`, `parallel state Name { }` | `type: "final"`, `type: "parallel"` |
 | `root { f: T = init }` | root `fields`, and `root: (ctx) => ({ f: init })` |
 | `input T` | `input: <schema of T>`; root defaults can read `input` |
-| `initial Target { data }` | `initial: { target, data }` (default: the first child) |
+| `initial state Name(field: T = value)` | `initial: { target: "Name", data: { field: value } }`: the state entered first, with its field defaults as its data (without `initial`, the first child is entered) |
 | `on Event -> Target { data }` | `on: { Event: { target: "Target", data: (ctx) => ({ ... }) } }` |
 | `on Event if cond -> ...` | adds `guard: (ctx) => cond` |
 | `on Event -> stay` | `{ stay: true }` |

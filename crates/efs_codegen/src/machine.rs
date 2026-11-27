@@ -382,24 +382,66 @@ impl Gen<'_> {
             }
             self.w.s(" })");
         }
+        let initials: Vec<&StateDecl> = body.states.iter().filter(|s| s.is_initial).collect();
+        for extra in initials.iter().skip(1) {
+            self.error(extra.name.span, format!("`{}` is not the only initial state here", extra.name.name));
+        }
+        for s in &body.states {
+            let is_initial = s.is_initial || (initials.is_empty() && std::ptr::eq(s, &body.states[0]));
+            if parallel && s.is_initial {
+                self.error(s.name.span, "a parallel state enters every region; remove `initial`");
+            }
+            for f in &s.fields {
+                if !is_initial && f.default.is_some() {
+                    self.error(f.span, "field defaults are the starting data of the initial state; this state is entered by transitions, which give its data");
+                }
+            }
+        }
         if !parallel && !body.states.is_empty() {
             open(self, &mut entries);
             self.w.s("initial: ");
-            match &body.initial {
-                Some(t) => self.transition(ctx, t, None, path),
-                None => {
-                    let first = &body.states[0];
-                    let target =
-                        if path.is_empty() { first.name.name.clone() } else { format!("{path}.{}", first.name.name) };
-                    self.w.s(&format!("{{ target: {target:?} }}"));
+            let first = initials.first().copied().unwrap_or(&body.states[0]);
+            let target = if path.is_empty() { first.name.name.clone() } else { format!("{path}.{}", first.name.name) };
+            self.w.push_node(first.name.span);
+            self.w.s(&format!("{{ target: {target:?}"));
+            if !first.fields.is_empty() {
+                for f in &first.fields {
+                    if f.default.is_none() && !f.optional {
+                        self.error(
+                            f.span,
+                            format!(
+                                "`{}` needs a default value: `{}` is the initial state",
+                                f.name.name, first.name.name
+                            ),
+                        );
+                    }
+                }
+                let defaults: Vec<&Expr> = first.fields.iter().filter_map(|f| f.default.as_ref()).collect();
+                self.w.s(", data: ");
+                if defaults.iter().any(|d| Self::uses_context(d)) {
+                    self.context_params(&defaults, &[]);
+                    self.w.s("(");
+                }
+                self.w.s("{ ");
+                let mut n = 0;
+                for f in &first.fields {
+                    if let Some(d) = &f.default {
+                        if n > 0 {
+                            self.w.s(", ");
+                        }
+                        n += 1;
+                        self.w.v(f.name.span);
+                        self.w.s(": ");
+                        self.expr(d);
+                    }
+                }
+                self.w.s(" }");
+                if defaults.iter().any(|d| Self::uses_context(d)) {
+                    self.w.s(")");
                 }
             }
-        } else if let Some(t) = &body.initial {
-            let span = match t {
-                Transition::Target { span, .. } | Transition::Update { span, .. } => *span,
-                Transition::Stay(s) => *s,
-            };
-            self.error(span, "`initial` needs child states (parallel states enter every region)");
+            self.w.s(" }");
+            self.w.pop_node();
         }
         if !body.ons.is_empty() {
             open(self, &mut entries);

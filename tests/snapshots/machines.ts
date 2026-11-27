@@ -4,7 +4,7 @@ import { Machine } from "@typeonce/effect-machine"
 export const CheckoutState = Machine.state({ fields: { attempts: Schema.Finite }, states: {
   Cart: {},
   Payment: { states: {
-    Entering: {},
+    Entering: { fields: { tries: Schema.Finite } },
     Charging: { fields: { card: Schema.String } }
   } },
   Done: { type: "final" },
@@ -38,7 +38,7 @@ export const Checkout = Machine.make({
       }
     },
     Payment: {
-      initial: { target: "Payment.Entering" },
+      initial: { target: "Payment.Entering", data: { tries: 0 } },
       on: {
         Cancel: { target: "Cancelled" }
       },

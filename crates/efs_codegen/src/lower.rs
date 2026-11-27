@@ -1957,9 +1957,6 @@ pub(crate) fn collect_value_names(module: &Module, out: &mut HashSet<String>) {
             Transition::Target { data: Some(d), .. } | Transition::Update { data: d, .. } => expr(d, out),
             _ => {}
         };
-        if let Some(t) = &b.initial {
-            tr(t, out);
-        }
         for on in &b.ons {
             if let Some(g) = &on.guard {
                 expr(g, out);

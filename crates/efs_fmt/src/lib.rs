@@ -713,18 +713,11 @@ impl Printer<'_> {
 
     fn state_body(&mut self, body: &StateBody, header_end: Option<u32>) {
         enum Entry<'a> {
-            Initial(&'a Transition),
             State(&'a StateDecl),
             On(&'a On),
             Invoke(&'a Invoke),
         }
         let mut entries: Vec<(Span, Entry)> = Vec::new();
-        if let Some(t) = &body.initial {
-            let s = Self::transition_span(t);
-            // The `initial` keyword precedes the target.
-            let kw = self.src[..s.start as usize].rfind("initial").map_or(s.start, |i| i as u32);
-            entries.push((Span::new(kw, s.end), Entry::Initial(t)));
-        }
         for s in &body.states {
             entries.push((s.span, Entry::State(s)));
         }
@@ -744,10 +737,6 @@ impl Printer<'_> {
             }
             self.leading(span.start);
             match e {
-                Entry::Initial(t) => {
-                    self.w("initial ");
-                    self.transition_target(t);
-                }
                 Entry::State(s) => self.state(s),
                 Entry::On(o) => {
                     self.w("on ");
@@ -767,6 +756,9 @@ impl Printer<'_> {
     }
 
     fn state(&mut self, s: &StateDecl) {
+        if s.is_initial {
+            self.w("initial ");
+        }
         if s.is_final {
             self.w("final ");
         }
@@ -778,8 +770,7 @@ impl Printer<'_> {
         if !s.fields.is_empty() {
             self.schema_fields(&s.fields, "(", ")", s.span);
         }
-        let empty =
-            s.body.initial.is_none() && s.body.states.is_empty() && s.body.ons.is_empty() && s.body.invokes.is_empty();
+        let empty = s.body.states.is_empty() && s.body.ons.is_empty() && s.body.invokes.is_empty();
         if !empty {
             self.w(" {");
             self.indent += 1;

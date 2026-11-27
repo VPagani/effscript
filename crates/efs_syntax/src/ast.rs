@@ -259,7 +259,6 @@ pub struct MachineSource {
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct StateBody {
-    pub initial: Option<Transition>,
     pub states: Vec<StateDecl>,
     pub ons: Vec<On>,
     pub invokes: Vec<Invoke>,
@@ -268,6 +267,8 @@ pub struct StateBody {
 #[derive(Clone, Debug, PartialEq)]
 pub struct StateDecl {
     pub name: Ident,
+    /// `initial state`: entered first. Its field defaults are its starting data.
+    pub is_initial: bool,
     pub is_final: bool,
     pub parallel: bool,
     pub fields: Vec<SchemaField>,

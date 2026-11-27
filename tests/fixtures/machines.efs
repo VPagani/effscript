@@ -19,17 +19,13 @@ export machine Checkout {
     ticks = Stream.make(1, 2, 3)
   }
 
-  initial Cart
-
-  state Cart {
+  initial state Cart {
     on Start -> Payment
     on Cancel -> Cancelled
   }
 
   state Payment {
-    initial Entering
-
-    state Entering {
+    initial state Entering(tries: Number = 0) {
       on Submit if event.card.length > 0 -> Charging { card: event.card }
     }
     state Charging(card: String) {
@@ -55,8 +51,7 @@ export machine Player parallel {
     Mute
   }
   state Playback {
-    initial Paused
-    state Paused {
+    initial state Paused {
       on Toggle -> Playing
     }
     state Playing {
@@ -64,8 +59,7 @@ export machine Player parallel {
     }
   }
   state Volume {
-    initial Audible
-    state Audible {
+    initial state Audible {
       on Mute -> Muted
     }
     state Muted {

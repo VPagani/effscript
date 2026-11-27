@@ -545,11 +545,10 @@ impl Linter {
         let events: Vec<&str> = m.events.iter().map(|e| e.name.name.as_str()).collect();
         let mut targeted: Vec<String> = Vec::new();
         self.state_body(&m.body, &events, &mut targeted);
-        // The first child of every compound state is entered by default.
+        // Initial states are entered; without one, the first child of a compound state is.
         fn defaults(body: &StateBody, out: &mut Vec<String>) {
-            if body.initial.is_none()
-                && let Some(first) = body.states.first()
-            {
+            let initial = body.states.iter().find(|s| s.is_initial).or(body.states.first());
+            if let Some(first) = initial {
                 out.push(first.name.name.clone());
             }
             for s in &body.states {
@@ -576,9 +575,6 @@ impl Linter {
                 }
             }
         };
-        if let Some(t) = &body.initial {
-            note(t, targeted);
-        }
         for on in &body.ons {
             if !events.contains(&on.event.name.as_str()) {
                 let known = if events.is_empty() {

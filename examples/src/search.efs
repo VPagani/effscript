@@ -14,9 +14,7 @@ export machine Search {
     load = (query: string) => searchItems(query)
   }
 
-  initial Idle
-
-  state Idle {
+  initial state Idle {
     on Search if event.query.length > 0 -> Loading { query: event.query }
   }
   state Loading(query: String) {
