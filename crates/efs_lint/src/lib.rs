@@ -440,8 +440,10 @@ impl Linter {
                         | ExprKind::With { .. }
                         | ExprKind::Catch { .. }
                         | ExprKind::EffectBlock(_) => true,
+                        // Effect's `*Unsafe` functions, such as `Queue.offerUnsafe`, run at once.
                         ExprKind::Call { callee, .. } => {
                             root_ident(callee).is_some_and(|r| r.starts_with(|c: char| c.is_ascii_uppercase()))
+                                && !matches!(&callee.kind, ExprKind::Member { name, .. } if name.name.ends_with("Unsafe"))
                         }
                         _ => false,
                     };
@@ -635,6 +637,7 @@ mod tests {
         assert_eq!(codes("const p = effect {\n  Console.log(\"hi\")\n}"), vec!["lint/discarded-effect"]);
         assert!(codes("const p = effect {\n  run Console.log(\"hi\")\n}").is_empty());
         assert!(codes("const p = effect {\n  users.set(1, 2)\n}").is_empty());
+        assert!(codes("const p = effect {\n  Queue.offerUnsafe(queue, 1)\n}").is_empty());
     }
 
     #[test]
