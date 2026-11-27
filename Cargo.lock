@@ -258,6 +258,15 @@ name = "efs_syntax"
 version = "0.1.0"
 
 [[package]]
+name = "efs_wasm"
+version = "0.1.0"
+dependencies = [
+ "efs_codegen",
+ "efs_syntax",
+ "serde_json",
+]
+
+[[package]]
 name = "either"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
