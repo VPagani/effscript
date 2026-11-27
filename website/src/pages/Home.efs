@@ -42,7 +42,7 @@ const features = [
   },
 ];
 
-const showcase = examples.filter((e) => e.id != "overview");
+const showcase = examples.filter((e) => e.showcase);
 
 const known = "rounded bg-white/10 px-1.5 py-0.5 font-mono text-[0.9em] text-zinc-200";
 

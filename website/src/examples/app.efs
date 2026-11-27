@@ -1,0 +1,51 @@
+// A small app: services describe what the program needs, layers provide
+// them, and typed errors say what can go wrong.
+type Todo = { id: number, title: string, done: boolean };
+
+error TodoNotFound { id: number }
+
+service Todos {
+  add(title: string): Effect<Todo>;
+  complete(id: number): Effect<Todo, TodoNotFound>;
+  all: Effect<Todo[]>;
+}
+
+const TodosInMemory = Layer.effect(Todos, effect {
+  const store = run Ref.make<Todo[]>([]);
+  return {
+    add: (title) => effect {
+      const todos = run Ref.get(store);
+      const todo = { id: todos.length + 1, title, done: false };
+      run Ref.set(store, [...todos, todo]);
+      return todo;
+    },
+    effect complete(id: number) {
+      const todos = run Ref.get(store);
+      const todo = todos.find((t) => t.id == id);
+      if todo == undefined {
+        fail new TodoNotFound({ id });
+      }
+      const done = { ...todo, done: true };
+      run Ref.set(store, todos.map((t) => t.id == id ? done : t));
+      return done;
+    },
+    all: Ref.get(store),
+  };
+});
+
+effect function program() {
+  const todos = use Todos;
+  run todos.add("Write EffScript");
+  run todos.add("Read the Effect docs");
+  run todos.complete(1);
+  for todo of run todos.all {
+    run Console.log(`${todo.done ? "[x]" : "[ ]"} ${todo.title}`);
+  }
+  run todos.complete(42);
+}
+
+export const main = program()
+  catch {
+    TodoNotFound(e) => Console.error(`There is no todo #${e.id}`)
+  }
+  with TodosInMemory;

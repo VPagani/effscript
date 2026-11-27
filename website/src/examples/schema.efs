@@ -1,13 +1,22 @@
-// Schemas are written as types, and decode unknown data.
+// Schemas are written as types, and decode unknown data. A failed decode
+// is a typed error that says what is wrong, and where.
 schema User {
   name: String
   email?: String
   roles: ("admin" | "member")[]
 }
 
-const input: unknown = { name: "Ada", roles: ["admin"] };
+const inputs: unknown[] = [
+  { name: "Ada", roles: ["admin"] },
+  { name: "Grace", roles: ["owner"] },
+];
+
+const decode = Schema.decodeUnknownEffect(User);
 
 export const main = effect {
-  const user = run Schema.decodeUnknownEffect(User)(input);
-  run Console.log(`${user.name} is ${user.roles.join(", ")}`);
+  for input of inputs {
+    run decode(input)
+      |> Effect.flatMap((user) => Console.log(`${user.name} is ${user.roles.join(", ")}`))
+      catch error => Console.error(`Invalid user:\n${error.message}`);
+  }
 };

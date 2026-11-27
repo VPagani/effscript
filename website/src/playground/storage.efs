@@ -1,0 +1,78 @@
+// The playground's draft and settings, kept in the browser's localStorage.
+import { Command, Component, Subscription } from "@effect/ui";
+
+export schema Settings {
+  /** The compiled output shown first: TypeScript or JavaScript. */
+  output: "ts" | "js"
+  /** Whether the compiler imports the prelude's modules. */
+  prelude: Boolean
+  /** Whether Format prints semicolons. */
+  semicolons: Boolean
+  /** The editor's share of the width, from 0.2 to 0.8. */
+  split: Number
+}
+
+export schema Draft {
+  source: String
+  example: String
+}
+
+export const defaultSettings: Settings = { output: "ts", prelude: true, semicolons: true, split: 0.5 };
+
+const settingsKey = "effscript.playground.settings";
+const draftKey = "effscript.playground.draft";
+
+/** The JSON stored at `key`, or `undefined` when there is none or storage is unavailable. */
+const read = (key: string): unknown =>
+  Effect.try({
+    try: () => {
+      const text = localStorage.getItem(key);
+      return text == null ? undefined : JSON.parse(text) as unknown;
+    },
+    catch: () => undefined,
+  })
+    |> Effect.orElseSucceed(() => undefined)
+    |> Effect.runSync;
+
+const write = (key: string, value: unknown) =>
+  Effect.try({ try: () => localStorage.setItem(key, JSON.stringify(value)), catch: () => undefined }) |> Effect.ignore;
+
+export const loadSettings = (): Settings => {
+  const stored = read(settingsKey);
+  const merged = typeof stored == "object" && stored != null ? { ...defaultSettings, ...stored } : defaultSettings;
+  return Schema.decodeUnknownOption(Settings)(merged) |> Option.getOrElse(() => defaultSettings);
+};
+
+export const loadDraft = (): Draft | undefined =>
+  Schema.decodeUnknownOption(Draft)(read(draftKey)) |> Option.getOrUndefined;
+
+/** A shared link's code, once edited, is the draft: reloading the page keeps the edits. */
+const forgetSharedCode = Effect.sync(() => {
+  if location.hash.startsWith("#code=") {
+    history.replaceState(history.state, "", location.pathname + location.search);
+  }
+});
+
+/** Saves the draft once the typing pauses; each edit restarts the wait. */
+export const SaveDraft = Command.make(
+  "SaveDraft",
+  { args: { source: Schema.String, example: Schema.String }, mode: "switch" },
+  (draft) =>
+    Effect.sleep("300 millis")
+      |> Effect.andThen(write(draftKey, draft))
+      |> Effect.andThen(forgetSharedCode)
+      |> Effect.as(Component.noop),
+);
+
+export const SaveSettings = Command.make(
+  "SaveSettings",
+  { args: { settings: Settings }, mode: "switch" },
+  ({ settings }) =>
+    Effect.sleep("300 millis")
+      |> Effect.andThen(write(settingsKey, settings))
+      |> Effect.as(Component.noop),
+);
+
+/** A subscription that sends what `message` returns once, when the component starts in the browser. */
+export const onStart = <M>(name: string, message: () => M) =>
+  Subscription.make(name, Stream.fromEffect(Effect.sync(message)));

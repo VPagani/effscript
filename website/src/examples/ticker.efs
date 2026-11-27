@@ -1,0 +1,10 @@
+// `Effect.forever` repeats an effect until it is interrupted:
+// press Stop to interrupt this one.
+export const main = effect {
+  let ticks = 0;
+  run effect {
+    ticks += 1;
+    run Console.log(`tick ${ticks}`);
+    run Effect.sleep("500 millis");
+  } |> Effect.forever;
+};

@@ -1,0 +1,23 @@
+// Schedules describe when to repeat or retry: here, up to five retries,
+// backing off exponentially from 100 milliseconds.
+error Unavailable { attempt: number }
+
+let attempts = 0;
+
+const flakyRequest = effect {
+  attempts += 1;
+  run Console.log(`Attempt ${attempts}…`);
+  if attempts < 4 {
+    fail new Unavailable({ attempt: attempts });
+  }
+  return "200 OK";
+};
+
+const policy = Schedule.max([Schedule.exponential("100 millis"), Schedule.recurs(5)]);
+
+export const main = flakyRequest
+  |> Effect.retry(policy)
+  |> Effect.flatMap((response) => Console.log(`Got ${response} after ${attempts} attempts`))
+  catch {
+    Unavailable(e) => Console.error(`Gave up after attempt ${e.attempt}`)
+  };

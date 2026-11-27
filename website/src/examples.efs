@@ -5,20 +5,39 @@ import errors from "./examples/errors.efs?raw";
 import services from "./examples/services.efs?raw";
 import schema from "./examples/schema.efs?raw";
 import match from "./examples/match.efs?raw";
+import streams from "./examples/streams.efs?raw";
+import retry from "./examples/retry.efs?raw";
+import concurrency from "./examples/concurrency.efs?raw";
+import ticker from "./examples/ticker.efs?raw";
+import app from "./examples/app.efs?raw";
 import machine from "./examples/machine.efs?raw";
 import component from "./examples/component.efs?raw";
 
-export type Example = { id: string, title: string, source: string, runnable: boolean };
+export type Example = {
+  id: string
+  title: string
+  group: string
+  source: string
+  /** Whether the home page shows it among the language's constructs. */
+  showcase: boolean
+};
 
 export const examples: Example[] = [
-  { id: "overview", title: "Overview", source: overview, runnable: true },
-  { id: "hello", title: "Effects", source: hello, runnable: true },
-  { id: "errors", title: "Errors", source: errors, runnable: true },
-  { id: "services", title: "Services", source: services, runnable: true },
-  { id: "schema", title: "Schemas", source: schema, runnable: true },
-  { id: "match", title: "Matching", source: match, runnable: true },
-  { id: "machine", title: "State machines", source: machine, runnable: false },
-  { id: "component", title: "Components", source: component, runnable: false },
+  { id: "overview", title: "Overview", group: "Language", source: overview, showcase: false },
+  { id: "hello", title: "Effects", group: "Language", source: hello, showcase: true },
+  { id: "errors", title: "Errors", group: "Language", source: errors, showcase: true },
+  { id: "services", title: "Services", group: "Language", source: services, showcase: true },
+  { id: "schema", title: "Schemas", group: "Language", source: schema, showcase: true },
+  { id: "match", title: "Matching", group: "Language", source: match, showcase: true },
+  { id: "streams", title: "Streams", group: "Effect", source: streams, showcase: false },
+  { id: "retry", title: "Retrying with schedules", group: "Effect", source: retry, showcase: false },
+  { id: "concurrency", title: "Concurrency", group: "Effect", source: concurrency, showcase: false },
+  { id: "ticker", title: "Running forever", group: "Effect", source: ticker, showcase: false },
+  { id: "app", title: "A small app", group: "Effect", source: app, showcase: false },
+  { id: "machine", title: "State machines", group: "Libraries", source: machine, showcase: true },
+  { id: "component", title: "Components", group: "Libraries", source: component, showcase: true },
 ];
+
+export const exampleGroups = ["Language", "Effect", "Libraries"];
 
 export const exampleById = (id: string): Example => examples.find((e) => e.id == id) ?? examples[0]!;

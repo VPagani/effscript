@@ -22,23 +22,35 @@ export type Output = { ts: string, js: string, diagnostics: Diagnostic[] };
 
 const empty: Output = { ts: "", js: "", diagnostics: [] };
 
-let last = { source: "", output: empty };
+let last = { key: "", output: empty };
 
-/** Compiles `source` to TypeScript and JavaScript; empty until the compiler has loaded. */
-export const compile = (source: string): Output => {
+/**
+ * Compiles `source` to TypeScript and JavaScript, with the lint warnings; empty until the
+ * compiler has loaded. The last result is cached, so views can call it on every render.
+ */
+export const compile = (source: string, prelude = true): Output => {
   if loaded == undefined {
     return empty;
   }
-  if last.source == source && last.output != empty {
+  const key = `${prelude}\u0000${source}`;
+  if last.key == key && last.output != empty {
     return last.output;
   }
-  const ts = loaded.compile(source, { target: "ts", sourceMap: false });
-  const js = loaded.compile(source, { target: "js", sourceMap: false });
+  const ts = loaded.compile(source, { target: "ts", sourceMap: false, prelude });
+  const js = loaded.compile(source, { target: "js", sourceMap: false, prelude });
   const lint = loaded.lint(source);
   const output = { ts: ts.code, js: js.code, diagnostics: [...ts.diagnostics, ...lint.diagnostics] };
-  last = { source, output };
+  last = { key, output };
   return output;
 };
 
+export const hasErrors = (output: Output): boolean => output.diagnostics.some((d) => d.severity == "error");
+
+const componentExport = new RegExp("^export const [\\w$]+ = Html\\.component\\(", "m");
+
+/** Whether the compiled module exports an Effect UI component, which the Preview tab renders. */
+export const exportsComponent = (output: Output): boolean => componentExport.test(output.js);
+
 /** Formats `source`, or returns it unchanged when it does not parse. */
-export const format = (source: string): string => loaded?.format(source).code ?? source;
+export const format = (source: string, semicolons = true): string =>
+  loaded?.format(source, { semicolons }).code ?? source;

@@ -1,39 +1,57 @@
-// The playground: write EffScript, see what it compiles to, and run it.
-import { Html } from "@effect/ui/html";
-import { Command, UiSchema } from "@effect/ui";
-import { compile, format, isLoaded, whenLoaded } from "../lib/compiler.efs";
+// The playground: write EffScript, see what it compiles to, run it and preview its components.
+import { Html, HtmlSubscription } from "@effect/ui/html";
+import { Command, Mount, UiSchema } from "@effect/ui";
+import { compile, exportsComponent, format, hasErrors, isLoaded, whenLoaded } from "../lib/compiler.efs";
+import type { Output } from "../lib/compiler.efs";
 import { codeLines } from "../lib/code.efs";
 import { linkTo, sourceInUrl } from "../lib/share.efs";
-import { exampleById, examples } from "../examples.efs";
+import { exampleById, exampleGroups, examples } from "../examples.efs";
+import { AttachEditor } from "../playground/editor.efs";
+import type { EditorEvent } from "../playground/editor.efs";
+import { RenderPreview, frameSandbox } from "../playground/preview.efs";
+import type { PreviewReport } from "../playground/preview.efs";
+import { DragDivider } from "../playground/divider.efs";
+import { Draft, Settings, SaveDraft, SaveSettings, defaultSettings, loadDraft, loadSettings, onStart } from "../playground/storage.efs";
+import { checkIcon, componentIcon, formatIcon, playIcon, reloadIcon, settingsIcon, shareIcon, spinner, stopIcon, terminalIcon, trashIcon } from "../playground/icons.efs";
 
 schema OutputLine {
   level: String
   text: String
 }
 
+schema Jump {
+  at: Number
+  revision: Number
+}
+
+schema Tab = "ts" | "js" | "problems" | "output" | "preview";
+
 type Report = { type: "line", level: string, text: string } | { type: "done", ok: boolean };
 
-/** Runs compiled JavaScript in a fresh worker, reporting each console line. */
+/** Runs compiled JavaScript in a fresh worker, reporting each console line and how long it took. */
 const RunProgram = Command.make(
   "RunProgram",
   { args: { code: Schema.String }, stream: true, mode: "switch" },
   ({ code }) =>
     Stream.callback<typeof PlaygroundMessage.Type>((queue) => effect {
+      const started = performance.now();
       const worker = new Worker(new URL("../runner.efs", import.meta.url), { type: "module" });
       defer Effect.sync(() => worker.terminate());
+      const finish = (ok: boolean) => {
+        Queue.offerUnsafe(queue, PlaygroundMessage.FinishedRun({ ok, elapsed: performance.now() - started }));
+        Queue.endUnsafe(queue);
+      };
       worker.onmessage = (event: MessageEvent<Report>) => {
         const report = event.data;
         if report.type == "line" {
           Queue.offerUnsafe(queue, PlaygroundMessage.PrintedLine({ level: report.level, text: report.text }));
         } else {
-          Queue.offerUnsafe(queue, PlaygroundMessage.FinishedRun({ ok: report.ok }));
-          Queue.endUnsafe(queue);
+          finish(report.ok);
         }
       };
       worker.onerror = (event) => {
         Queue.offerUnsafe(queue, PlaygroundMessage.PrintedLine({ level: "error", text: event.message }));
-        Queue.offerUnsafe(queue, PlaygroundMessage.FinishedRun({ ok: false }));
-        Queue.endUnsafe(queue);
+        finish(false);
       };
       worker.postMessage({ code });
     }),
@@ -47,83 +65,202 @@ const CopyLink = Command.make("CopyLink", { args: { url: Schema.String } }, ({ u
       onFailure: () => PlaygroundMessage.FailedCopyLink(),
     }));
 
-const WaitBeforeHidingNotice = Command.make("WaitBeforeHidingNotice", {}, () =>
+const WaitBeforeHidingNotice = Command.make("WaitBeforeHidingNotice", { mode: "switch" }, () =>
   Effect.sleep("2 seconds") |> Effect.as(PlaygroundMessage.ExpiredNotice()));
 
-const tabs: { id: "ts" | "js" | "problems" | "output", label: string }[] = [
+/** Where the playground starts: a shared link, else the last draft, else the first example. */
+const startingPoint = (): { source: string, example: string } => {
+  const shared = sourceInUrl();
+  if shared != undefined {
+    return { source: shared, example: "" };
+  }
+  return loadDraft() ?? { source: examples[0]!.source, example: examples[0]!.id };
+};
+
+/** Whether the browser runs on Apple's systems, where shortcuts use ⌘. */
+const isApple = (): boolean => new RegExp("Mac|iPhone|iPad").test(globalThis.navigator?.platform ?? "");
+
+/** The modifier key of shortcuts, as this platform writes it. */
+const modifier = (apple: boolean): string => apple ? "⌘" : "Ctrl+";
+
+const clampSplit = (split: number): number => Math.min(0.8, Math.max(0.2, split));
+
+/** The compiled module the Preview tab renders: the current one, unless it has errors. */
+const programFor = (output: Output, previous: string): string =>
+  hasErrors(output) || !exportsComponent(output) ? previous : output.js;
+
+const editorMessage = (event: EditorEvent) =>
+  event.type == "edited" ? PlaygroundMessage.EditedSource({ text: event.text }) : event.type == "requestedRun" ? PlaygroundMessage.RequestedRun() : PlaygroundMessage.RequestedFormat();
+
+const previewMessage = (report: PreviewReport) =>
+  report.type == "line" ? PlaygroundMessage.PrintedLine({ level: report.level, text: report.text }) : report.type == "rendered" ? PlaygroundMessage.RenderedPreview({ name: report.name }) : PlaygroundMessage.FailedPreview({ text: report.text });
+
+const dividerKeys: Record<string, (split: number) => number> = {
+  ArrowLeft: (split) => split - 0.05,
+  ArrowRight: (split) => split + 0.05,
+  Home: () => 0.2,
+  End: () => 0.8,
+};
+
+const tabs: { id: Tab, label: string }[] = [
   { id: "ts", label: "TypeScript" },
   { id: "js", label: "JavaScript" },
   { id: "problems", label: "Problems" },
   { id: "output", label: "Output" },
+  { id: "preview", label: "Preview" },
 ];
 
-const levelClass = (level: string): string =>
+const lineStyle = (level: string): string =>
   match level {
-    "error" => "text-red-400"
-    "warn" => "text-amber-300"
-    "info" => "text-sky-300"
-    "debug" => "text-zinc-500"
-    _ => "text-zinc-200"
+    "error" => "border-red-500 bg-red-500/10 text-red-300"
+    "warn" => "border-amber-400 bg-amber-400/10 text-amber-200"
+    "info" => "border-transparent text-sky-300"
+    "debug" => "border-transparent text-zinc-500"
+    _ => "border-transparent text-zinc-200"
   };
 
-const lineCount = (source: string): number => source.split("\n").length;
+const statusText = (status: string, duration: number): string =>
+  match status {
+    "running" => "Running…"
+    "succeeded" => `Succeeded in ${Math.round(duration)} ms`
+    "failed" => `Failed after ${Math.round(duration)} ms`
+    "stopped" => "Stopped"
+    _ => ""
+  };
 
-const button = "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition";
+const statusDot = (status: string): string =>
+  match status {
+    "running" => "bg-sky-400 animate-pulse"
+    "succeeded" => "bg-emerald-400"
+    "failed" => "bg-red-400"
+    "stopped" => "bg-amber-400"
+    _ => "bg-zinc-600"
+  };
+
+const button = "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400";
 const quiet = `${button} text-zinc-300 hover:bg-white/10 hover:text-white`;
+const kbd = "hidden rounded border border-white/15 px-1 font-sans text-[11px] leading-4 opacity-70 xl:inline";
+const empty = "flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-sm text-zinc-400";
+const toggle = "h-4 w-4 accent-violet-500";
 
 export component Playground {
-  let source: String = sourceInUrl() ?? examples[0]!.source;
-  let example: String = sourceInUrl() == undefined ? examples[0]!.id : "";
-  let tab: "ts" | "js" | "problems" | "output" = "ts";
+  let source: String = examples[0]!.source;
+  let example: String = examples[0]!.id;
+  let revision: Number = 0;
+  let jump: Jump = { at: 0, revision: 0 };
+  let settings: Settings = defaultSettings;
+  let tab: Tab = defaultSettings.output;
+  let pane: "editor" | "output" = "editor";
   let ready: Boolean = isLoaded();
   let output: OutputLine[] = [];
-  let running: Boolean = false;
+  let status: "idle" | "running" | "succeeded" | "failed" | "stopped" = "idle";
+  let duration: Number = 0;
   let notice: String = "";
+  let settingsOpen: Boolean = false;
+  let previewProgram: String = "";
+  let previewRevision: Number = 0;
+  let previewName: String = "";
+  let previewError: String = "";
+  let restored: Boolean = false;
+  let apple: Boolean = false;
+
+  update RestoredSession(draft: Draft, saved: Settings, onApple: Boolean) {
+    restored = true;
+    apple = onApple;
+    settings = saved;
+    tab = saved.output;
+    source = draft.source;
+    example = draft.example;
+    revision += 1;
+    previewProgram = programFor(compile(draft.source, saved.prelude), "");
+  }
 
   update LoadedCompiler {
     ready = true;
+    previewProgram = programFor(compile(source, settings.prelude), previewProgram);
   }
 
   update EditedSource(text: String) {
+    run SaveDraft.make({ source: text, example: example != "" && exampleById(example).source == text ? example : "" });
     source = text;
+    example = example != "" && exampleById(example).source == text ? example : "";
+    previewProgram = programFor(compile(text, settings.prelude), previewProgram);
   }
 
   update PickedExample(id: String) {
+    run SaveDraft.make({ source: exampleById(id).source, example: id });
     example = id;
     source = exampleById(id).source;
+    revision += 1;
     output = [];
+    status = "idle";
+    previewProgram = programFor(compile(source, settings.prelude), "");
+    previewError = "";
+    if tab == "preview" && previewProgram == "" {
+      tab = settings.output;
+    }
   }
 
-  update ClickedTab(name: "ts" | "js" | "problems" | "output") {
+  update ClickedTab(name: Tab) {
     tab = name;
   }
 
-  update ClickedFormat {
-    source = format(source);
+  update ClickedPane(name: "editor" | "output") {
+    pane = name;
   }
 
-  update ClickedRun {
-    run RunProgram.make({ code: compile(source).js });
-    output = [];
-    running = true;
-    tab = "output";
+  update RequestedFormat {
+    run WaitBeforeHidingNotice.make({});
+    const formatted = format(source, settings.semicolons);
+    notice = !ready ? "" : formatted == source && hasErrors(compile(source, settings.prelude)) ? "Fix the syntax errors to format" : "Formatted";
+    if formatted != source {
+      source = formatted;
+      revision += 1;
+    }
   }
+
+  update RequestedRun =>
+    !ready ? $.model : hasErrors(compile(source, settings.prelude)) ? $.evolve({ tab: "problems", pane: "output" }) : exportsComponent(compile(source, settings.prelude)) ? $.evolve({ tab: "preview", pane: "output", previewRevision: previewRevision + 1, previewError: "" }) : $.evolve({ output: [], status: "running", tab: "output", pane: "output" })
+      .run(RunProgram.make({ code: compile(source, settings.prelude).js }));
 
   update ClickedStop {
     run Command.interrupt(RunProgram);
-    running = false;
-    output = [...output, { level: "warn", text: "Stopped." }];
+    status = "stopped";
+  }
+
+  update ClickedClear {
+    output = [];
+    if status != "running" {
+      status = "idle";
+    }
   }
 
   update PrintedLine(level: String, text: String) {
     output = [...output, { level, text }];
   }
 
-  update FinishedRun(ok: Boolean) {
-    running = false;
-    if !ok {
-      tab = "output";
-    }
+  update FinishedRun(ok: Boolean, elapsed: Number) {
+    status = ok ? "succeeded" : "failed";
+    duration = elapsed;
+  }
+
+  update RenderedPreview(name: String) {
+    previewName = name;
+    previewError = "";
+  }
+
+  update FailedPreview(text: String) {
+    previewError = text;
+  }
+
+  update ClickedReloadPreview {
+    previewRevision += 1;
+    previewError = "";
+  }
+
+  update ClickedProblem(at: Number) {
+    jump = { at, revision: jump.revision + 1 };
+    pane = "editor";
   }
 
   update ClickedShare {
@@ -144,106 +281,332 @@ export component Playground {
     notice = "";
   }
 
-  subscriptions = ({ model }) => model.ready ? [] : [whenLoaded(PlaygroundMessage.LoadedCompiler())];
+  update ClickedSettings {
+    settingsOpen = !settingsOpen;
+  }
+
+  update ClosedSettings {
+    settingsOpen = false;
+  }
+
+  update PickedOutput(target: "ts" | "js") {
+    run SaveSettings.make({ settings: { ...settings, output: target } });
+    settings = { ...settings, output: target };
+    tab = target;
+  }
+
+  update ToggledPrelude(on: Boolean) {
+    run SaveSettings.make({ settings: { ...settings, prelude: on } });
+    settings = { ...settings, prelude: on };
+    previewProgram = programFor(compile(source, on), previewProgram);
+  }
+
+  update ToggledSemicolons(on: Boolean) {
+    run SaveSettings.make({ settings: { ...settings, semicolons: on } });
+    settings = { ...settings, semicolons: on };
+  }
+
+  update MovedDivider(split: Number) {
+    run SaveSettings.make({ settings: { ...settings, split: clampSplit(split) } });
+    settings = { ...settings, split: clampSplit(split) };
+  }
+
+  subscriptions = ({ model }) => [
+    // The page may be prerendered, so what only the browser knows is read once it runs.
+    !model.restored && onStart(
+      "RestoreSession",
+      () => PlaygroundMessage.RestoredSession({ draft: startingPoint(), saved: loadSettings(), onApple: isApple() }),
+    ),
+    !model.ready && whenLoaded(PlaygroundMessage.LoadedCompiler()),
+    HtmlSubscription.onDocument(
+      "keydown",
+      ({ key, ctrl, meta, defaultPrevented }) =>
+        defaultPrevented ? undefined : (ctrl || meta) && key == "Enter" ? PlaygroundMessage.RequestedRun() : (ctrl || meta) && key.toLowerCase() == "s" ? PlaygroundMessage.RequestedFormat() : key == "Escape" && model.settingsOpen ? PlaygroundMessage.ClosedSettings() : undefined,
+      { preventDefault: true },
+    ),
+  ];
 
   view =>
     <section class="flex h-[calc(100dvh-4rem)] flex-col bg-[#0d1117]">
-      <div class="flex flex-wrap items-center gap-2 border-b border-white/10 bg-zinc-950 px-3 py-2">
+      <div class="flex items-center gap-1 border-b border-white/10 bg-zinc-950 px-2 py-2 sm:gap-1.5 sm:px-3">
         <label class="sr-only" for="example">Example</label>
         <select
           id="example"
-          class="h-8 rounded-md border border-white/10 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-violet-400"
+          class="h-8 w-36 min-w-0 shrink rounded-md border border-white/10 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none transition hover:border-white/20 focus:border-violet-400 sm:w-52"
           on:change={({ value }) => PickedExample({ id: value })}
         >
-          {example == "" ? <option value="" selected>Shared code</option> : null}
-          {examples.map((e) => <option value={e.id} selected={e.id == example}>{e.title}</option>)}
+          {example == "" ? <option value="" selected>Your code</option> : null}
+          {exampleGroups.map((group) =>
+            <optgroup label={group}>
+              {examples.filter((e) => e.group == group).map((e) =>
+                <option value={e.id} selected={e.id == example}>{e.title}</option>)}
+            </optgroup>)}
         </select>
-        <button type="button" class={quiet} on:click={ClickedFormat}>Format</button>
-        <button type="button" class={quiet} on:click={ClickedShare}>Share</button>
-        <span class="text-sm text-emerald-300" role="status">{notice}</span>
-        <div class="ml-auto flex items-center gap-2">
-          {running ? <button
+        <span class="mx-1 hidden h-5 w-px bg-white/10 sm:block" />
+        <button
+          type="button"
+          class={quiet}
+          title={`Format (${modifier(apple)}S)`}
+          aria-keyshortcuts="Control+S Meta+S"
+          disabled={!ready}
+          on:click={RequestedFormat}
+        >
+          {formatIcon(h)}
+          <span class="hidden sm:inline">Format</span>
+          <kbd class={kbd}>{`${modifier(apple)}S`}</kbd>
+        </button>
+        <button type="button" class={quiet} title="Copy a link to this code" on:click={ClickedShare}>
+          {shareIcon(h)}
+          <span class="hidden sm:inline">Share</span>
+        </button>
+        <div class="relative">
+          <button
             type="button"
-            class={`${button} bg-red-500/90 text-white hover:bg-red-500`}
+            class={[quiet, settingsOpen && "bg-white/10 text-white"]}
+            title="Settings"
+            aria-label="Settings"
+            aria-haspopup="true"
+            aria-expanded={settingsOpen ? "true" : "false"}
+            aria-controls="playground-settings"
+            on:click={ClickedSettings}
+          >
+            {settingsIcon(h)}
+          </button>
+          {settingsOpen ? <div class="fixed inset-0 z-40" on:click={ClosedSettings} /> : null}
+          {settingsOpen ? <div
+            id="playground-settings"
+            role="dialog"
+            aria-label="Settings"
+            class="fixed inset-x-3 top-[7.25rem] z-50 rounded-xl border border-white/10 bg-zinc-900 p-4 shadow-2xl shadow-black/60 sm:absolute sm:inset-x-auto sm:top-10 sm:left-0 sm:w-80"
+          >
+            <p class="text-xs font-semibold tracking-wide text-zinc-500 uppercase">Settings</p>
+            <fieldset class="mt-3">
+              <legend class="text-sm font-medium text-zinc-200">Compiled output</legend>
+              <p class="text-xs text-zinc-500">The tab the playground opens with.</p>
+              <div class="mt-2 inline-flex rounded-lg bg-black/40 p-0.5" role="radiogroup">
+                {[["ts", "TypeScript"], ["js", "JavaScript"]].map(([id, label]) =>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={settings.output == id ? "true" : "false"}
+                    class={[
+                      "rounded-md px-3 py-1 text-sm transition",
+                      settings.output == id ? "bg-violet-500 text-white" : "text-zinc-400 hover:text-zinc-200",
+                    ]}
+                    on:click={PickedOutput({ target: id == "js" ? "js" : "ts" })}
+                  >
+                    {label!}
+                  </button>)}
+              </div>
+            </fieldset>
+            <label class="mt-4 flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                class={`${toggle} mt-0.5 shrink-0`}
+                checked={settings.prelude}
+                on:change={({ checked }) => ToggledPrelude({ on: checked })}
+              />
+              <span>
+                <span class="block text-sm font-medium text-zinc-200">Prelude</span>
+                <span class="block text-xs text-zinc-500">Import Effect, Schema, Stream and the other core modules when used.</span>
+              </span>
+            </label>
+            <label class="mt-3 flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                class={`${toggle} mt-0.5 shrink-0`}
+                checked={settings.semicolons}
+                on:change={({ checked }) => ToggledSemicolons({ on: checked })}
+              />
+              <span>
+                <span class="block text-sm font-medium text-zinc-200">Semicolons</span>
+                <span class="block text-xs text-zinc-500">Print semicolons when formatting.</span>
+              </span>
+            </label>
+            <p class="mt-4 border-t border-white/10 pt-3 text-xs leading-5 text-zinc-500">
+              {`${modifier(apple)}Enter runs, ${modifier(apple)}S formats, ${modifier(apple)}F searches. Press Escape, then Tab, to leave the editor.`}
+            </p>
+          </div> : null}
+        </div>
+        <span class="ml-1 truncate text-sm text-emerald-300" role="status">{notice}</span>
+        <div class="ml-auto flex shrink-0 items-center gap-2">
+          {ready ? null : <span class="hidden items-center gap-2 text-xs text-zinc-400 sm:flex">
+            {spinner(h)}
+            <span>Loading the compiler…</span>
+          </span>}
+          {status == "running" ? <button
+            type="button"
+            class={`${button} bg-red-500/90 px-3 text-white hover:bg-red-500`}
             on:click={ClickedStop}
           >
-            Stop
+            {stopIcon(h)}
+            <span>Stop</span>
           </button> : <button
             type="button"
-            class={`${button} bg-violet-500 text-white hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40`}
-            disabled={!ready || compile(source).diagnostics.some((d) => d.severity == "error")}
-            on:click={ClickedRun}
+            class={`${button} bg-violet-500 px-3 text-white hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40`}
+            title={`Run (${modifier(apple)}Enter)`}
+            aria-keyshortcuts="Control+Enter Meta+Enter"
+            disabled={!ready}
+            on:click={RequestedRun}
           >
-            Run
+            {ready ? playIcon(h) : spinner(h)}
+            <span>Run</span>
+            <kbd class={`${kbd} border-white/30`}>{`${modifier(apple)}↵`}</kbd>
           </button>}
         </div>
       </div>
-      <div class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-1">
-        <div class="relative min-h-0 min-w-0 overflow-auto border-white/10 lg:border-r">
-          <div class="flex min-h-full min-w-max font-mono text-[13px] leading-6">
-            <div
-              aria-hidden="true"
-              class="sticky left-0 z-10 select-none bg-[#0d1117] py-4 pr-3 pl-4 text-right text-[#6e7681]"
-            >
-              {Array.from({ length: lineCount(source) }, (_, i) =>
-                <div
-                  class={[
-                    "h-6",
-                    compile(source).diagnostics.some((d) => d.line == i + 1 && d.severity == "error") && "text-red-400",
-                  ]}
-                >
-                  {String(i + 1)}
-                </div>)}
-            </div>
-            <div class="relative flex-1">
-              <pre aria-hidden="true" class="pointer-events-none py-4 pr-8 pl-2 text-[#e6edf3]">{codeLines(h, source, "efs")}</pre>
-              <textarea
-                class="absolute inset-0 h-full w-full resize-none overflow-hidden bg-transparent py-4 pr-8 pl-2 whitespace-pre text-transparent caret-white outline-none selection:bg-violet-400/30"
-                aria-label="EffScript source"
-                spellcheck="false"
-                autocapitalize="off"
-                autocomplete="off"
-                wrap="off"
-                value={source}
-                on:input={({ value }) => EditedSource({ text: value })}
-              />
-            </div>
-          </div>
+      <div class="flex border-b border-white/10 bg-zinc-950 px-2 lg:hidden" role="tablist" aria-label="Pane">
+        {[["editor", "Editor"], ["output", "Output"]].map(([id, label]) =>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={pane == id ? "true" : "false"}
+            class={[
+              "-mb-px flex-1 border-b-2 py-2 text-sm font-medium transition",
+              pane == id ? "border-violet-400 text-white" : "border-transparent text-zinc-400",
+            ]}
+            on:click={ClickedPane({ name: id == "output" ? "output" : "editor" })}
+          >
+            {label!}
+          </button>)}
+      </div>
+      <div class="flex min-h-0 flex-1" style={{ "--split": `${settings.split * 100}%` }}>
+        <div class={["min-h-0 min-w-0 flex-1 lg:block lg:flex-none lg:basis-(--split)", pane == "editor" ? "block" : "hidden"]}>
+          {h.div.class("h-full").onMount(
+            AttachEditor({
+              text: source,
+              revision,
+              jump,
+              diagnostics: compile(source, settings.prelude).diagnostics.map((d) => ({
+                from: d.from,
+                to: d.to,
+                severity: d.severity,
+                message: d.message,
+                code: d.code,
+              })),
+            }) |> Mount.map(editorMessage),
+          )}
         </div>
-        <div class="flex min-h-0 min-w-0 flex-col border-t border-white/10 lg:border-t-0">
-          <div class="flex gap-1 border-b border-white/10 px-2 pt-2" role="tablist">
-            {tabs.map((t) =>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={t.id == tab ? "true" : "false"}
-                class={[
-                  "rounded-t-md px-3 py-1.5 text-sm transition",
-                  t.id == tab ? "bg-white/10 text-white" : "text-zinc-400 hover:text-zinc-200",
-                ]}
-                on:click={ClickedTab({ name: t.id })}
-              >
-                {t.label}
-                {t.id == "problems" && compile(source).diagnostics.length > 0 ? <span class="ml-1.5 rounded-full bg-red-500/20 px-1.5 text-xs text-red-300">
-                  {String(compile(source).diagnostics.length)}
-                </span> : null}
-              </button>)}
+        <div
+          role="separator"
+          tabindex="0"
+          aria-orientation="vertical"
+          aria-label="Resize the editor"
+          aria-valuemin="20"
+          aria-valuemax="80"
+          aria-valuenow={String(Math.round(settings.split * 100))}
+          class="group relative z-10 -mx-1 hidden w-2 shrink-0 cursor-col-resize touch-none outline-none lg:block"
+          on:keydown|preventDefault={({ key }) =>
+            key in dividerKeys ? MovedDivider({ split: dividerKeys[key]!(settings.split) }) : undefined}
+        >
+          {h.div.class("absolute inset-0").onMount(DragDivider() |> Mount.map((split) => MovedDivider({ split })))}
+          <div class="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-white/10 transition group-hover:w-0.5 group-hover:bg-violet-400 group-focus-visible:w-0.5 group-focus-visible:bg-violet-400" />
+        </div>
+        <div class={["min-h-0 min-w-0 flex-1 flex-col lg:flex", pane == "output" ? "flex" : "hidden"]}>
+          <div class="flex items-center border-b border-white/10 bg-zinc-950/40">
+            <div class="flex min-w-0 flex-1 gap-1 overflow-x-auto px-2 pt-2" role="tablist" aria-label="Output">
+              {tabs.map((t) =>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={t.id == tab ? "true" : "false"}
+                  class={[
+                    "flex shrink-0 items-center gap-1.5 rounded-t-md px-3 py-1.5 text-sm transition",
+                    t.id == tab ? "bg-white/10 text-white" : "text-zinc-400 hover:text-zinc-200",
+                  ]}
+                  on:click={ClickedTab({ name: t.id })}
+                >
+                  <span>{t.label}</span>
+                  {t.id == "problems" && compile(source, settings.prelude).diagnostics.length > 0 ? <span
+                    class={[
+                      "rounded-full px-1.5 text-xs",
+                      hasErrors(compile(source, settings.prelude)) ? "bg-red-500/20 text-red-300" : "bg-amber-400/20 text-amber-200",
+                    ]}
+                  >
+                    {String(compile(source, settings.prelude).diagnostics.length)}
+                  </span> : null}
+                  {t.id == "output" && status != "idle" ? <span class={["h-1.5 w-1.5 rounded-full", statusDot(status)]} /> : null}
+                  {t.id == "preview" && previewProgram != "" ? <span class="h-1.5 w-1.5 rounded-full bg-violet-400" /> : null}
+                </button>)}
+            </div>
           </div>
-          <div class="min-h-0 flex-1 overflow-auto">
-            {!ready ? <p class="p-5 text-sm text-zinc-400">Loading the compiler…</p> : tab == "ts" ? <pre class="p-4 font-mono text-[13px] leading-6 text-[#e6edf3]">{codeLines(h, compile(source).ts, "ts")}</pre> : tab == "js" ? <pre class="p-4 font-mono text-[13px] leading-6 text-[#e6edf3]">{codeLines(h, compile(source).js, "js")}</pre> : tab == "problems" ? compile(source).diagnostics.length == 0 ? <p class="p-5 text-sm text-zinc-400">No problems.</p> : <ul class="divide-y divide-white/5 font-mono text-[13px]">
-              {compile(source).diagnostics.map((d) =>
-                <li class="flex gap-3 px-4 py-2">
-                  <span class={d.severity == "error" ? "text-red-400" : "text-amber-300"}>
-                    {`${d.line}:${d.column}`}
-                  </span>
-                  <span class="text-zinc-200">{d.message}</span>
-                  <span class="ml-auto shrink-0 text-zinc-500">{d.code}</span>
+          <div class="relative min-h-0 flex-1">
+            {!ready && tab != "output" ? <div class={empty}>
+              {spinner(h)}
+              <p>Loading the compiler…</p>
+            </div> : tab == "ts" ? <div class="h-full overflow-auto">
+              <pre class="p-4 font-mono text-[13px] leading-6 text-[#e6edf3]">{codeLines(h, compile(source, settings.prelude).ts, "ts")}</pre>
+            </div> : tab == "js" ? <div class="h-full overflow-auto">
+              <pre class="p-4 font-mono text-[13px] leading-6 text-[#e6edf3]">{codeLines(h, compile(source, settings.prelude).js, "js")}</pre>
+            </div> : tab == "problems" ? compile(source, settings.prelude).diagnostics.length == 0 ? <div class={empty}>
+              <span class="text-emerald-400">{checkIcon(h)}</span>
+              <p>No problems.</p>
+            </div> : <ul class="h-full divide-y divide-white/5 overflow-auto font-mono text-[13px]">
+              {compile(source, settings.prelude).diagnostics.map((d) =>
+                <li>
+                  <button
+                    type="button"
+                    class="flex w-full gap-3 px-4 py-2 text-left transition hover:bg-white/5"
+                    title="Show in the editor"
+                    on:click={ClickedProblem({ at: d.from })}
+                  >
+                    <span class={["shrink-0", d.severity == "error" ? "text-red-400" : "text-amber-300"]}>
+                      {`${d.line}:${d.column}`}
+                    </span>
+                    <span class="min-w-0 flex-1 text-zinc-200">{d.message}</span>
+                    <span class="shrink-0 text-zinc-500">{d.code}</span>
+                  </button>
                 </li>)}
-            </ul> : output.length == 0 ? <p class="p-5 text-sm text-zinc-400">
-              {running ? "Running…" : "Press Run to run the program's exported `main` effect."}
-            </p> : <pre class="p-4 font-mono text-[13px] leading-6 whitespace-pre-wrap">
-              {output.map((l) => <div class={levelClass(l.level)}>{l.text}</div>)}
-            </pre>}
+            </ul> : tab == "output" ? <div class="flex h-full flex-col">
+              <div class="flex h-9 shrink-0 items-center gap-2 border-b border-white/5 px-4 text-xs text-zinc-400">
+                <span class={["h-2 w-2 rounded-full", statusDot(status)]} />
+                <span role="status">{status == "idle" ? "Ready" : statusText(status, duration)}</span>
+                <button
+                  type="button"
+                  class="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition hover:bg-white/10 hover:text-zinc-200 disabled:opacity-40"
+                  disabled={output.length == 0}
+                  on:click={ClickedClear}
+                >
+                  {trashIcon(h)}
+                  <span>Clear</span>
+                </button>
+              </div>
+              {output.length == 0 ? <div class={empty}>
+                {status == "running" ? spinner(h) : terminalIcon(h)}
+                <p class="max-w-xs">
+                  {status == "running" ? "Running…" : `Press Run (${modifier(apple)}Enter) to run the program's exported main effect.`}
+                </p>
+              </div> : <div class="flex min-h-0 flex-1 flex-col-reverse overflow-auto">
+                <div class="mb-auto py-2 font-mono text-[13px] leading-6" role="log" aria-live="polite">
+                  {output.map((l) =>
+                    <div class={["border-l-2 px-4 whitespace-pre-wrap break-words", lineStyle(l.level)]}>{l.text}</div>)}
+                </div>
+              </div>}
+            </div> : previewProgram == "" ? <div class={empty}>
+              {componentIcon(h)}
+              <p class="max-w-xs">This program exports no component. Export one, as in the Components example, to see it here.</p>
+            </div> : <div class="flex h-full flex-col">
+              <div class="flex h-9 shrink-0 items-center gap-2 border-b border-white/5 px-4 text-xs text-zinc-400">
+                <span class={["h-2 w-2 rounded-full", previewError == "" ? "bg-violet-400" : "bg-red-400"]} />
+                <span class="font-mono">{previewName == "" ? "Preview" : `<${previewName} />`}</span>
+                <button
+                  type="button"
+                  class="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition hover:bg-white/10 hover:text-zinc-200"
+                  on:click={ClickedReloadPreview}
+                >
+                  {reloadIcon(h)}
+                  <span>Reload</span>
+                </button>
+              </div>
+              {h.iframe
+                .class("min-h-0 w-full flex-1 bg-[#0d1117]")
+                .attr("title", "Component preview")
+                .attr("sandbox", frameSandbox)
+                .onMount(
+                RenderPreview({ program: previewProgram, revision: previewRevision }) |> Mount.map(previewMessage),
+              )}
+              {previewError == "" ? null : <pre class="max-h-[40%] shrink-0 overflow-auto border-t border-red-500/30 bg-red-500/10 p-4 font-mono text-xs leading-5 whitespace-pre-wrap text-red-300">{previewError}</pre>}
+            </div>}
           </div>
         </div>
       </div>

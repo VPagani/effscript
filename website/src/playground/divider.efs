@@ -1,0 +1,42 @@
+// The draggable divider between the editor and the output.
+import { Mount } from "@effect/ui";
+
+/** Reports where the divider is dragged to, as a fraction of its parent's width. */
+export const DragDivider = Mount.makeStream("DragDivider", {}, (node: HTMLElement) =>
+  Stream.callback<number>((queue) =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        let dragging = false;
+        const down = (event: PointerEvent) => {
+          if event.button == 0 {
+            dragging = true;
+            node.setPointerCapture(event.pointerId);
+            event.preventDefault();
+          }
+        };
+        const move = (event: PointerEvent) => {
+          const parent = node.parentElement;
+          if dragging && parent != null {
+            const box = parent.getBoundingClientRect();
+            Queue.offerUnsafe(queue, (event.clientX - box.left) / box.width);
+          }
+        };
+        const up = (event: PointerEvent) => {
+          dragging = false;
+          if node.hasPointerCapture(event.pointerId) {
+            node.releasePointerCapture(event.pointerId);
+          }
+        };
+        node.addEventListener("pointerdown", down);
+        node.addEventListener("pointermove", move);
+        node.addEventListener("pointerup", up);
+        node.addEventListener("pointercancel", up);
+        return () => {
+          node.removeEventListener("pointerdown", down);
+          node.removeEventListener("pointermove", move);
+          node.removeEventListener("pointerup", up);
+          node.removeEventListener("pointercancel", up);
+        };
+      }),
+      (remove) => Effect.sync(remove),
+    )));

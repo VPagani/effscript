@@ -1,0 +1,22 @@
+// `Effect.all` runs effects one after another by default; `concurrency`
+// runs several at once. Compare the timings.
+effect function download(file: string, ms: number) {
+  run Effect.sleep(ms);
+  run Console.log(`  downloaded ${file}`);
+  return ms;
+}
+
+const files = [download("a.txt", 300), download("b.txt", 200), download("c.txt", 100)];
+
+effect function timed(label: string, concurrency: number) {
+  run Console.log(`${label}:`);
+  const start = run Clock.currentTimeMillis;
+  run Effect.all(files, { concurrency });
+  const end = run Clock.currentTimeMillis;
+  run Console.log(`  took ${end - start} ms`);
+}
+
+export const main = effect {
+  run timed("One at a time", 1);
+  run timed("All at once", 3);
+};

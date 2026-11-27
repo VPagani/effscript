@@ -1,0 +1,78 @@
+// The playground's editor: CodeMirror, attached to its element with a mount. CodeMirror is
+// loaded when the editor first mounts, so pages without an editor don't download it.
+import { Mount } from "@effect/ui";
+
+schema EditorDiagnostic {
+  from: Number
+  to: Number
+  severity: "error" | "warning" | "info"
+  message: String
+  code: String
+}
+
+/** A request to put the cursor at `at`, made again each time `revision` changes. */
+schema EditorJump {
+  at: Number
+  revision: Number
+}
+
+/** What the editor reports: an edit, or a shortcut pressed while it has focus. */
+export type EditorEvent = { type: "edited", text: string } | { type: "requestedRun" } | { type: "requestedFormat" };
+
+/**
+ * Hosts CodeMirror in its element and reports edits and shortcuts. The model is the source
+ * of truth: the editor takes `text` again only when `revision` changes (an example, a
+ * format), so typing never resets the cursor; `diagnostics` are shown once they describe the
+ * text the editor holds.
+ */
+export const AttachEditor = Mount.makeStream(
+  "AttachEditor",
+  {
+    args: {
+      text: Schema.String,
+      revision: Schema.Number,
+      diagnostics: Schema.Array(EditorDiagnostic),
+      jump: EditorJump,
+    },
+  },
+  (node: HTMLElement, args, changes) =>
+    Stream.callback<EditorEvent>((queue) => effect {
+      const { createEditor } = run Effect.promise(() => import("./codemirror.efs"));
+      const editor = run Effect.acquireRelease(
+        Effect.sync(() =>
+          createEditor(node, args.text, {
+            edited: (text) => Queue.offerUnsafe(queue, { type: "edited", text }),
+            requestedRun: () => Queue.offerUnsafe(queue, { type: "requestedRun" }),
+            requestedFormat: () => Queue.offerUnsafe(queue, { type: "requestedFormat" }),
+          })),
+        (editor) => Effect.sync(() => editor.destroy()),
+      );
+      let revision = args.revision;
+      let jump = args.jump.revision;
+      let shown = "";
+      run changes
+        |> Stream.runForEach((next) =>
+          Effect.sync(() => {
+            if next.revision != revision {
+              revision = next.revision;
+              editor.replaceText(next.text);
+            }
+            if next.jump.revision != jump {
+              jump = next.jump.revision;
+              editor.jumpTo(next.jump.at);
+            }
+            const diagnostics = JSON.stringify(next.diagnostics);
+            if diagnostics != shown && editor.text() == next.text {
+              shown = diagnostics;
+              editor.setDiagnostics(next.diagnostics.map((d) => ({
+                from: d.from,
+                to: d.to,
+                severity: d.severity,
+                message: d.message,
+                source: d.code,
+              })));
+            }
+          }))
+        |> Effect.forkScoped;
+    }),
+);

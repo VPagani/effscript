@@ -1,11 +1,10 @@
-// A statechart with @typeonce/effect-machine.
+// A statechart with @typeonce/effect-machine. Every transition is logged:
+// the light turns itself off one second after it was turned on.
 import { Machine } from "@typeonce/effect-machine";
 
-export machine Toggle {
-  root { flips: Number = 0 }
+export machine Light {
   events {
     Flip
-    Reset
   }
 
   initial state Off {
@@ -13,14 +12,22 @@ export machine Toggle {
   }
   state On {
     on Flip -> Off;
-    after "5 seconds" -> Off;
+    after "1 second" -> Off;
   }
-
-  on Flip update root { flips: root.flips + 1 };
-  on Reset -> Off;
 }
 
 export const main = effect {
-  const toggle = run Machine.start(Toggle);
-  run toggle.send(ToggleEvents.Flip());
+  const light = run Machine.start(Light);
+  const started = run Clock.currentTimeMillis;
+  run light.changes
+    |> Stream.runForEach(({ state }) => effect {
+      const now = run Clock.currentTimeMillis;
+      run Console.log(`${((now - started) / 1000).toFixed(1)}s  ${state.state.path}`);
+    })
+    |> Effect.forkScoped;
+  const flip = light.send(LightEvents.Flip()) |> Effect.delay("300 millis");
+  run flip;
+  run flip;
+  run flip;
+  run Effect.sleep("1500 millis");
 } |> Effect.scoped;

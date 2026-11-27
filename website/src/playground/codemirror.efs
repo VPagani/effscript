@@ -1,0 +1,317 @@
+// The CodeMirror extensions of the playground's editor: EffScript highlighting with the
+// site's shiki theme, indentation, brackets, search, completion and diagnostics.
+import { Annotation, EditorSelection, EditorState, Prec, RangeSetBuilder, StateField } from "@codemirror/state";
+import type { Extension, Text } from "@codemirror/state";
+import { Decoration, EditorView, crosshairCursor, drawSelection, dropCursor, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, keymap, lineNumbers, rectangularSelection } from "@codemirror/view";
+import type { DecorationSet } from "@codemirror/view";
+import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from "@codemirror/commands";
+import { bracketMatching, indentOnInput, indentService, indentUnit } from "@codemirror/language";
+import type { IndentContext } from "@codemirror/language";
+import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import { autocompletion, closeBrackets, closeBracketsKeymap, completeAnyWord, completeFromList, completionKeymap } from "@codemirror/autocomplete";
+import { lintGutter, lintKeymap, setDiagnostics } from "@codemirror/lint";
+import type { Diagnostic } from "@codemirror/lint";
+import { highlight } from "../lib/highlight.efs";
+
+const foreground = "#e6edf3";
+
+const marks = new Map<string, Decoration>();
+
+/** One mark per color and style, shared by every token that has them. */
+const markFor = (color: string, italic: boolean): Decoration => {
+  const key = `${color}${italic ? "i" : ""}`;
+  const hit = marks.get(key);
+  if hit != undefined {
+    return hit;
+  }
+  const mark = Decoration.mark({ attributes: { style: `color: ${color}${italic ? "; font-style: italic" : ""}` } });
+  marks.set(key, mark);
+  return mark;
+};
+
+/** The shiki tokens of the document, the same as the site's code blocks, as decorations. */
+const tokens = (doc: Text): DecorationSet => {
+  const builder = new RangeSetBuilder<Decoration>();
+  let offset = 0;
+  for line of highlight(doc.toString(), "efs") {
+    for token of line {
+      const end = offset + token.content.length;
+      if token.color.toLowerCase() != foreground || token.italic {
+        builder.add(offset, end, markFor(token.color, token.italic));
+      }
+      offset = end;
+    }
+    offset += 1;
+  }
+  return builder.finish();
+};
+
+const highlighting = StateField.define<DecorationSet>({
+  create: (state) => tokens(state.doc),
+  update: (decorations, tr) => tr.docChanged ? tokens(tr.state.doc) : decorations,
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+const opens = new RegExp("([\\{\\(\\[]|=>)\\s*$");
+const closes = new RegExp("^\\s*[\\}\\)\\]]");
+const leading = new RegExp("^\\s*");
+
+/**
+ * Indents a line by the line before it: one level more after an opening bracket or `=>`,
+ * one less before a closing bracket.
+ */
+const indentation = (cx: IndentContext, pos: number): number => {
+  const doc = cx.state.doc;
+  const line = doc.lineAt(pos);
+  let before = line.text.slice(0, pos - line.from);
+  let number = line.number;
+  while before.trim() == "" && number > 1 {
+    number -= 1;
+    before = doc.line(number).text;
+  }
+  const base = leading.exec(before)?.[0].length ?? 0;
+  const open = opens.test(before);
+  const close = closes.test(cx.textAfterPos(pos));
+  if open && !close {
+    return base + cx.unit;
+  }
+  if close && !open {
+    return Math.max(0, base - cx.unit);
+  }
+  return base;
+};
+
+/** Tab inserts spaces up to the next indentation stop, or indents the selected lines. */
+const insertIndentation = (view: EditorView): boolean => {
+  const state = view.state;
+  if state.selection.ranges.some((range) => !range.empty) {
+    return indentMore(view);
+  }
+  view.dispatch(state.update(
+    state.changeByRange((range) => {
+      const line = state.doc.lineAt(range.head);
+      const spaces = 2 - (range.head - line.from) % 2;
+      return {
+        changes: { from: range.head, insert: " ".repeat(spaces) },
+        range: EditorSelection.cursor(range.head + spaces),
+      };
+    }),
+    { scrollIntoView: true, userEvent: "input" },
+  ));
+  return true;
+};
+
+const keywordNames = "effect run use fail defer service schema error enum machine component match catch with "
+  + "const let function return if else for of while import export from type prop update view "
+  + "event emit state initial on after invoke true false undefined null new typeof";
+
+const keywords = keywordNames.split(" ").map((label) => ({ label, type: "keyword" }));
+
+const preludeNames = "Effect Layer Stream Schema Console Schedule Duration Config Option Result Exit Cause Scope "
+  + "Fiber Ref Queue Clock Random DateTime Match";
+
+const prelude = preludeNames.split(" ").map((label) => ({ label, type: "namespace", detail: "effect" }));
+
+const theme = EditorView.theme(
+  {
+    "&": { height: "100%", color: foreground, backgroundColor: "#0d1117", fontSize: "13px" },
+    "&.cm-focused": { outline: "none" },
+    ".cm-scroller": {
+      fontFamily: "\"JetBrains Mono\", ui-monospace, SFMono-Regular, Menlo, monospace",
+      lineHeight: "1.5rem",
+      fontVariantLigatures: "none",
+    },
+    ".cm-content": { padding: "1rem 0", caretColor: "#c4b5fd" },
+    ".cm-line": { padding: "0 2rem 0 0.5rem" },
+    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "#c4b5fd", borderLeftWidth: "2px" },
+    "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
+      backgroundColor: "rgba(167, 139, 250, 0.28)",
+    },
+    ".cm-activeLine": { backgroundColor: "rgba(110, 118, 129, 0.08)" },
+    ".cm-gutters": { backgroundColor: "#0d1117", color: "#6e7681", border: "none" },
+    ".cm-lineNumbers .cm-gutterElement": { padding: "0 0.75rem 0 1rem", minWidth: "2.5rem" },
+    ".cm-activeLineGutter": { backgroundColor: "transparent", color: foreground },
+    ".cm-gutter-lint": { width: "1rem" },
+    ".cm-gutter-lint .cm-gutterElement": { padding: "0.4rem 0 0 0.25rem" },
+    ".cm-lint-marker": { width: "0.7rem", height: "0.7rem" },
+    "&.cm-focused .cm-matchingBracket": { backgroundColor: "rgba(63, 185, 80, 0.25)", outline: "1px solid rgba(63, 185, 80, 0.6)" },
+    "&.cm-focused .cm-nonmatchingBracket": { backgroundColor: "rgba(248, 81, 73, 0.25)" },
+    ".cm-selectionMatch": { backgroundColor: "rgba(56, 189, 248, 0.15)" },
+    ".cm-searchMatch": { backgroundColor: "rgba(210, 153, 34, 0.3)", outline: "1px solid rgba(210, 153, 34, 0.6)" },
+    ".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: "rgba(210, 153, 34, 0.55)" },
+    ".cm-tooltip": {
+      backgroundColor: "#161b22",
+      color: foreground,
+      border: "1px solid rgba(255, 255, 255, 0.1)",
+      borderRadius: "0.5rem",
+      overflow: "hidden",
+      boxShadow: "0 10px 30px rgba(0, 0, 0, 0.45)",
+    },
+    ".cm-tooltip-lint": { padding: "0" },
+    ".cm-diagnostic": { padding: "0.4rem 0.75rem", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif", fontSize: "13px" },
+    ".cm-diagnostic-error": { borderLeft: "3px solid #f85149" },
+    ".cm-diagnostic-warning": { borderLeft: "3px solid #d29922" },
+    ".cm-diagnostic-info": { borderLeft: "3px solid #38bdf8" },
+    ".cm-diagnosticSource": { color: "#8b949e", fontFamily: "\"JetBrains Mono\", monospace", fontSize: "11px" },
+    ".cm-lintRange-error": {
+      backgroundImage: "linear-gradient(45deg, transparent 65%, #f85149 80%, transparent 90%), linear-gradient(135deg, transparent 5%, #f85149 15%, transparent 35%)",
+      backgroundSize: "6px 3px",
+      backgroundPosition: "left bottom",
+      backgroundRepeat: "repeat-x",
+      paddingBottom: "2px",
+    },
+    ".cm-lintRange-warning": {
+      backgroundImage: "linear-gradient(45deg, transparent 65%, #d29922 80%, transparent 90%), linear-gradient(135deg, transparent 5%, #d29922 15%, transparent 35%)",
+      backgroundSize: "6px 3px",
+      backgroundPosition: "left bottom",
+      backgroundRepeat: "repeat-x",
+      paddingBottom: "2px",
+    },
+    ".cm-tooltip-autocomplete > ul": { fontFamily: "\"JetBrains Mono\", monospace", fontSize: "12.5px" },
+    ".cm-tooltip-autocomplete > ul > li": { padding: "0.15rem 0.6rem" },
+    ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "rgba(139, 92, 246, 0.35)", color: "#fff" },
+    ".cm-completionDetail": { color: "#8b949e", marginLeft: "0.75rem", fontStyle: "normal" },
+    ".cm-panels": { backgroundColor: "#161b22", color: foreground },
+    ".cm-panels-bottom": { borderTop: "1px solid rgba(255, 255, 255, 0.1)" },
+    ".cm-panels-top": { borderBottom: "1px solid rgba(255, 255, 255, 0.1)" },
+    ".cm-search": { fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif", fontSize: "13px", padding: "0.5rem 0.75rem" },
+    ".cm-search label": { color: "#c9d1d9" },
+    ".cm-textfield": {
+      backgroundColor: "#0d1117",
+      border: "1px solid rgba(255, 255, 255, 0.15)",
+      borderRadius: "0.375rem",
+      color: foreground,
+      padding: "0.2rem 0.5rem",
+    },
+    ".cm-textfield:focus": { borderColor: "#a78bfa", outline: "none" },
+    ".cm-button": {
+      backgroundImage: "none",
+      backgroundColor: "rgba(255, 255, 255, 0.06)",
+      border: "1px solid rgba(255, 255, 255, 0.12)",
+      borderRadius: "0.375rem",
+      color: foreground,
+      padding: "0.2rem 0.6rem",
+    },
+    ".cm-panel button[name=close]": { color: "#8b949e", fontSize: "18px" },
+  },
+  { dark: true },
+);
+
+const extensions: Extension[] = [
+  lineNumbers(),
+  lintGutter(),
+  highlightActiveLineGutter(),
+  highlightSpecialChars(),
+  history(),
+  drawSelection(),
+  dropCursor(),
+  EditorState.allowMultipleSelections.of(true),
+  EditorState.tabSize.of(2),
+  indentUnit.of("  "),
+  indentService.of(indentation),
+  indentOnInput(),
+  EditorState.languageData.of(() => [
+    {
+      indentOnInput: new RegExp("^\\s*[\\}\\)\\]]$"),
+      commentTokens: { line: "//", block: { open: "/*", close: "*/" } },
+      closeBrackets: { brackets: ["(", "[", "{", "\"", "'", "`"] },
+    },
+  ]),
+  bracketMatching(),
+  closeBrackets(),
+  autocompletion({ override: [completeFromList([...keywords, ...prelude]), completeAnyWord], icons: false }),
+  rectangularSelection(),
+  crosshairCursor(),
+  highlightActiveLine(),
+  highlightSelectionMatches(),
+  highlighting,
+  theme,
+  EditorView.contentAttributes.of({ "aria-label": "EffScript source" }),
+  keymap.of([
+    ...closeBracketsKeymap,
+    ...defaultKeymap,
+    ...searchKeymap,
+    ...historyKeymap,
+    ...completionKeymap,
+    ...lintKeymap,
+    { key: "Tab", run: insertIndentation, shift: indentLess },
+  ]),
+];
+
+/** What the editor tells its owner. */
+export type EditorHandlers = {
+  edited: (text: string) => void
+  requestedRun: () => void
+  requestedFormat: () => void
+};
+
+/** An editor in the page, driven by its owner. */
+export type Editor = {
+  text: () => string
+  /** Replaces the text, keeping the cursor where it was when the edit is around it. */
+  replaceText: (text: string) => void
+  setDiagnostics: (diagnostics: readonly Diagnostic[]) => void
+  jumpTo: (at: number) => void
+  destroy: () => void
+};
+
+/** Marks the transactions that apply the owner's text, so the editor does not report them back. */
+const fromOwner = Annotation.define<boolean>();
+
+const clamp = (value: number, length: number): number => Math.max(0, Math.min(value, length));
+
+/** Creates an editor in `parent`. */
+export const createEditor = (parent: HTMLElement, doc: string, handlers: EditorHandlers): Editor => {
+  const shortcuts = Prec.highest(keymap.of([
+    {
+      key: "Mod-Enter",
+      run: () => {
+        handlers.requestedRun();
+        return true;
+      },
+    },
+    {
+      key: "Mod-s",
+      run: () => {
+        handlers.requestedFormat();
+        return true;
+      },
+    },
+  ]));
+  const edits = EditorView.updateListener.of((update) => {
+    if update.docChanged && !update.transactions.some((tr) => tr.annotation(fromOwner) == true) {
+      handlers.edited(update.state.doc.toString());
+    }
+  });
+  const view = new EditorView({ parent, state: EditorState.create({ doc, extensions: [shortcuts, extensions, edits] }) });
+  return {
+    text: () => view.state.doc.toString(),
+    replaceText: (text) => {
+      const current = view.state.doc.toString();
+      let start = 0;
+      while start < current.length && start < text.length && current[start] == text[start] {
+        start += 1;
+      }
+      let end = 0;
+      while end < current.length - start && end < text.length - start && current[current.length - 1 - end] == text[text.length - 1 - end] {
+        end += 1;
+      }
+      view.dispatch({
+        changes: { from: start, to: current.length - end, insert: text.slice(start, text.length - end) },
+        annotations: fromOwner.of(true),
+      });
+    },
+    setDiagnostics: (diagnostics) => {
+      const length = view.state.doc.length;
+      view.dispatch(setDiagnostics(
+        view.state,
+        diagnostics.map((d) => ({ ...d, from: clamp(d.from, length), to: clamp(Math.max(d.to, d.from), length) })),
+      ));
+    },
+    jumpTo: (at) => {
+      view.dispatch({ selection: { anchor: clamp(at, view.state.doc.length) }, scrollIntoView: true });
+      view.focus();
+    },
+    destroy: () => view.destroy(),
+  };
+};

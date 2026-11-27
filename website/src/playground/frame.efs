@@ -1,0 +1,67 @@
+// The preview frame's script: renders the first component a playground program exports.
+// It runs in a sandboxed iframe, with `effect`, `@effect/ui` and `@effect/ui/html` bundled
+// in, and reports to the playground with `postMessage`.
+import * as effect from "effect";
+import * as ui from "@effect/ui";
+import * as html from "@effect/ui/html";
+import * as machine from "@typeonce/effect-machine";
+import { Component } from "@effect/ui";
+import { BrowserHost, Html } from "@effect/ui/html";
+import { evaluate, levels, show } from "../lib/sandbox.efs";
+import type { PreviewReport } from "./preview.efs";
+
+const post = (report: PreviewReport) => parent.postMessage({ channel: "effscript-preview", report }, "*");
+
+for level of levels {
+  const original = console[level];
+  console[level] = (...args: unknown[]) => {
+    original(...args);
+    post({ type: "line", level, text: args.map(show).join(" ") });
+  };
+}
+
+addEventListener("error", (event) => post({ type: "failed", text: show(event.error ?? event.message) }));
+addEventListener("unhandledrejection", (event) => post({ type: "failed", text: show(event.reason) }));
+
+const modules = { "effect": effect, "@effect/ui": ui, "@effect/ui/html": html, "@typeonce/effect-machine": machine };
+
+const program = (globalThis as unknown as { __program: string }).__program;
+
+const start = () => {
+  const evaluated = evaluate(program, modules);
+  if evaluated.type == "unsupported" {
+    post({ type: "failed", text: `The preview can't load \`${evaluated.specifier}\`.` });
+    return;
+  }
+  const entry = Object.entries(evaluated.exports).find(([_, value]) => Component.isComponent(value));
+  if entry == undefined {
+    post({ type: "failed", text: "Export a component to preview it." });
+    return;
+  }
+  const [name, component] = entry;
+  const props = evaluated.exports["preview"] ?? {};
+  const root = document.getElementById("root")!;
+  post({ type: "rendered", name });
+  let reported = "";
+  const app = BrowserHost.mount(component as Parameters<typeof BrowserHost.mount>[0], props, root, {
+    // The component failed: report why once, and leave a note in its place.
+    fallback: (failure, helper) => {
+      const text = Cause.pretty(failure.cause);
+      if text != reported {
+        reported = text;
+        post({ type: "failed", text });
+      }
+      const h = helper as unknown as Html.H<never>;
+      return <p style={{ color: "#f87171" }}>{`<${name} /> failed: see the error below.`}</p>;
+    },
+  });
+  Effect.runPromiseExit(Layer.launch(app as Layer<never>)).then((exit) => {
+    if Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause) {
+      post({ type: "failed", text: Cause.pretty(exit.cause) });
+    }
+  });
+};
+
+Effect.try({ try: start, catch: (cause) => cause })
+  |> Effect.catch((cause) => Effect.sync(() => post({ type: "failed", text: show(cause) })))
+  |> Effect.runSync;

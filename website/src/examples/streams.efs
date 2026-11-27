@@ -1,0 +1,17 @@
+// Streams are lazy, effectful sequences. `for run` consumes one like
+// `for await`, one element at a time.
+const temperatures = Stream.make(18, 21, 25, 31, 29, 35, 22)
+  |> Stream.schedule(Schedule.spaced("100 millis"));
+
+const warnings = temperatures
+  |> Stream.filter((celsius) => celsius >= 30)
+  |> Stream.map((celsius) => `Heat warning: ${celsius}°C`);
+
+export const main = effect {
+  for run warning of warnings {
+    run Console.warn(warning);
+  }
+  const all = run Stream.runCollect(temperatures);
+  const average = all.reduce((sum, celsius) => sum + celsius, 0) / all.length;
+  run Console.log(`Average: ${average.toFixed(1)}°C`);
+};

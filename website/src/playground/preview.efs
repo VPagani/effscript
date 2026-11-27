@@ -1,0 +1,96 @@
+// The Preview tab: renders a program's component in a sandboxed iframe.
+import { Mount } from "@effect/ui";
+import frameScript from "./frame.efs?worker&url";
+import type { Level } from "../lib/sandbox.efs";
+
+/** What the preview frame reports. */
+export type PreviewReport = { type: "line", level: Level, text: string } | { type: "rendered", name: string } | { type: "failed", text: string };
+
+/** The frame's script, fetched once: the frame has no origin, so it can't load it itself. */
+let script: Promise<string> | undefined = undefined;
+
+const loadScript = (): Promise<string> => {
+  if script == undefined {
+    const url = new URL(frameScript, location.href).href;
+    script = import.meta.env.DEV ? Promise.resolve(`import ${JSON.stringify(url)};`) : fetch(url).then((response) => response.text());
+  }
+  return script;
+};
+
+/** The sandbox of the frame. In development it shares the page's origin, to load Vite's modules. */
+export const frameSandbox = import.meta.env.DEV ? "allow-scripts allow-same-origin" : "allow-scripts";
+
+const styles = `
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    padding: 24px;
+    background: #0d1117;
+    color: #e6edf3;
+    font: 14px/1.6 Inter, ui-sans-serif, system-ui, sans-serif;
+  }
+  h1, h2, h3 { margin: 0 0 12px; line-height: 1.25; color: #fff; }
+  p { margin: 0 0 12px; }
+  button {
+    margin: 0 8px 8px 0;
+    padding: 6px 14px;
+    border: 0;
+    border-radius: 6px;
+    background: #8b5cf6;
+    color: #fff;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  button:hover { background: #a78bfa; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  input, select, textarea {
+    padding: 6px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    background: #161b22;
+    color: inherit;
+    font: inherit;
+  }
+  ul { padding-left: 20px; }
+`;
+
+const documentFor = (program: string, script: string): string =>
+  [
+    "<!doctype html><html><head><meta charset=\"utf-8\" />",
+    `<style>${styles}</style></head><body><div id="root"></div>`,
+    `<script>window.__program = ${JSON.stringify(program).replaceAll("<", "\\u003c")};</script>`,
+    `<script type="module">${script.replaceAll("</script", "<\\/script")}</script>`,
+    "</body></html>",
+  ].join("");
+
+/**
+ * Loads the frame again whenever the program or `revision` changes, and reports what the
+ * frame posts. Each load starts from a fresh document, so nothing of the last run is left.
+ */
+export const RenderPreview = Mount.makeStream(
+  "RenderPreview",
+  { args: { program: Schema.String, revision: Schema.Number } },
+  (node: HTMLIFrameElement, _args, changes) =>
+    Stream.callback<PreviewReport>((queue) => effect {
+      const listener = (event: MessageEvent) => {
+        const data = event.data as { channel?: string, report?: PreviewReport } | null;
+        if event.source == node.contentWindow && data?.channel == "effscript-preview" && data.report != undefined {
+          Queue.offerUnsafe(queue, data.report);
+        }
+      };
+      run Effect.acquireRelease(
+        Effect.sync(() => addEventListener("message", listener)),
+        () => Effect.sync(() => removeEventListener("message", listener)),
+      );
+      const loaded = run Effect.tryPromise(loadScript) |> Effect.option;
+      if Option.isNone(loaded) {
+        Queue.offerUnsafe(queue, { type: "failed", text: "Couldn't load the preview's runtime." });
+        return;
+      }
+      run changes
+        |> Stream.debounce("200 millis")
+        |> Stream.runForEach(({ program }) => Effect.sync(() => node.srcdoc = documentFor(program, loaded.value)))
+        |> Effect.forkScoped;
+    }),
+);

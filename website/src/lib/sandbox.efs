@@ -1,0 +1,91 @@
+// Evaluates a compiled playground module with its imports bound to modules the page bundles.
+
+/** The modules a program may import, by specifier. */
+export type Modules = Record<string, unknown>;
+
+export type Evaluated = { type: "ok", exports: Record<string, unknown> } | { type: "unsupported", specifier: string };
+
+const namedImport = new RegExp("^import\\s*\\{([^}]*)\\}\\s*from\\s*[\"']([^\"']+)[\"'];?[ \\t]*$", "gm");
+const namespaceImport = new RegExp("^import\\s*\\*\\s*as\\s+([\\w$]+)\\s+from\\s*[\"']([^\"']+)[\"'];?[ \\t]*$", "gm");
+const defaultImport = new RegExp("^import\\s+([\\w$]+)\\s+from\\s*[\"']([^\"']+)[\"'];?[ \\t]*$", "gm");
+const anyImport = new RegExp("^import\\s[^;\\n]*?[\"']([^\"']+)[\"'];?[ \\t]*$", "m");
+const alias = new RegExp("\\s+as\\s+", "g");
+const declaration = new RegExp("^export\\s+(const|let|function)\\s+([\\w$]+)", "gm");
+const exportList = new RegExp("^export\\s*\\{([^}]*)\\};?[ \\t]*$", "gm");
+
+const moduleRef = (specifier: string): string => `__modules[${JSON.stringify(specifier)}]`;
+
+/** Turns the compiled module into a function body that returns its exports. */
+const toBody = (code: string, modules: Modules): string | { unsupported: string } => {
+  const missing: string[] = [];
+  const check = (specifier: string) => {
+    if !(specifier in modules) {
+      missing.push(specifier);
+    }
+  };
+  const exported: string[] = [];
+  const named = code.replace(namedImport, (_line: string, names: string, specifier: string) => {
+    check(specifier);
+    return `const { ${names.replace(alias, ": ")} } = ${moduleRef(specifier)};`;
+  });
+  const namespaces = named.replace(namespaceImport, (_line: string, name: string, specifier: string) => {
+    check(specifier);
+    return `const ${name} = ${moduleRef(specifier)};`;
+  });
+  const defaults = namespaces.replace(defaultImport, (_line: string, name: string, specifier: string) => {
+    check(specifier);
+    return `const ${name} = ${moduleRef(specifier)}.default;`;
+  });
+  const declared = defaults.replace(declaration, (_line: string, keyword: string, name: string) => {
+    exported.push(`${name}: ${name}`);
+    return `${keyword} ${name}`;
+  });
+  const body = declared.replace(exportList, (_line: string, names: string) => {
+    for entry of names.split(",") {
+      const [local, outside] = entry.trim().split(alias);
+      if local != undefined && local != "" {
+        exported.push(`${outside ?? local}: ${local}`);
+      }
+    }
+    return "";
+  });
+  const leftover = anyImport.exec(body)?.[1];
+  if leftover != undefined {
+    missing.push(leftover);
+  }
+  if missing.length > 0 {
+    return { unsupported: missing[0]! };
+  }
+  return `"use strict";\n${body}\nreturn { ${exported.join(", ")} };`;
+};
+
+/** Runs the module's top level and returns its exports; throws what the module throws. */
+export const evaluate = (code: string, modules: Modules): Evaluated => {
+  const body = toBody(code, modules);
+  if typeof body != "string" {
+    return { type: "unsupported", specifier: body.unsupported };
+  }
+  const exports = new Function("__modules", body)(modules) as Record<string, unknown>;
+  return { type: "ok", exports };
+};
+
+/** A value as console output: strings as they are, errors with their stack, data as JSON. */
+export const show = (value: unknown): string => {
+  if typeof value == "string" {
+    return value;
+  }
+  if value instanceof Error {
+    return value.stack ?? value.message;
+  }
+  if typeof value == "object" && value != null {
+    const json = Effect.try({ try: () => JSON.stringify(value, null, 2), catch: () => undefined })
+      |> Effect.orElseSucceed(() => undefined)
+      |> Effect.runSync;
+    return json ?? String(value);
+  }
+  return String(value);
+};
+
+export type Level = "log" | "info" | "warn" | "error" | "debug";
+
+export const levels: Level[] = ["log", "info", "warn", "error", "debug"];
