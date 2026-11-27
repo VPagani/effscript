@@ -19,6 +19,7 @@ JavaScript: `const` cannot be reassigned, `let` can.
 - [Matching](#matching): `match`
 - [Services and layers](#services-and-layers): `service`, `layer`
 - [Errors, schemas and enums](#errors-schemas-and-enums): `error`, `schema`, `enum`
+- [The prelude](#prelude): `Effect`, `Schema`, `Stream`, ... without imports
 - [Type sugar](#type-sugar)
 - [State machines](#state-machines): `machine` (effect-machine)
 - [Components and markup](#components-and-markup): `component` (Effect UI)
@@ -292,13 +293,63 @@ Schema fields are written as **types** and translated to schemas:
 | `field?: T` | `Schema.optional(T)` |
 | `field = expression` | the expression, as written |
 
+## Prelude
+
+The core modules of `effect` are in scope in every file without an import:
+
+`Effect`, `Layer`, `Stream`, `Schema`, `Console`, `Schedule`, `Duration`,
+`Config`, `Option`, `Result`, `Exit`, `Cause`, `Scope`, `Fiber`, `Ref`,
+`Queue`, `Clock`, `Random`, `DateTime`, `Match`
+
+```efs
+export effect function greet(name: string) {
+  run Console.log(`Hello, ${name}!`);
+}
+
+export const retried = greet("Ada") |> Effect.retry(Schedule.recurs(2));
+```
+
+compiles to
+
+```ts
+import { Effect, Console, pipe, Schedule } from "effect"
+
+export const greet = Effect.fn("greet")(function* (name: string) {
+  yield* Console.log(`Hello, ${name}!`)
+})
+
+export const retried = pipe(greet("Ada"), Effect.retry(Schedule.recurs(2)))
+```
+
+- A prelude name is imported only when the file uses it, as a value or as a
+  type (including the [type sugar](#type-sugar) `Effect<A, E, R>`). The names
+  join an existing `import { ... } from "effect"`, or get an import of their
+  own, so the output is ordinary TypeScript with explicit imports.
+- Your own names always win, without an error or a warning: a file that
+  declares or imports a name (`service Clock { }`,
+  `import { Effect } from "./my-effect.js"`) uses its own, and a parameter or
+  local `const` with a prelude name hides the prelude where it is in scope.
+- In JavaScript output, a name used only as a type is not imported.
+- Other modules (`Data`, `Context`, `Brand`, `Chunk`, `HashMap`, ...) and
+  companion libraries are imported as usual. Modules named like JavaScript
+  globals (`Array`, `String`, `Number`, `Boolean`, `Function`, `Record`,
+  `Symbol`, `Promise`, ...) are left out so that they do not hide the globals.
+- The list follows the supported Effect major (see
+  [Library versions](compatibility.md)).
+
+To turn the prelude off, set `"prelude": false` in
+[`efs.json`](cli.md#efsjson), or pass `prelude: false` to the
+[compiler](bundlers.md#the-compiler-package) and the bundler plugins.
+
 ## Type sugar
 
 In type positions, the Effect modules whose namespace has a type of the same
-name can be used directly when they are imported from `"effect"`:
-`Effect<A, E, R>` means `Effect.Effect<A, E, R>`, and likewise `Stream`,
-`Layer`, `Option`, `Exit`, `Cause`, `Scope`, `Schedule`, `Duration`, `Fiber`,
-`Queue`, `Ref`, `Brand`, `Context`, `Schema`, `Result`, `Config` and others.
+name can be used directly when they come from the [prelude](#prelude) or are
+imported from `"effect"`: `Effect<A, E, R>` means `Effect.Effect<A, E, R>`,
+and likewise `Stream`, `Layer`, `Option`, `Exit`, `Cause`, `Scope`,
+`Schedule`, `Duration`, `Fiber`, `Queue`, `Ref`, `Schema`, `Result`, `Config`
+and `DateTime`, plus `Brand`, `Context`, `Chunk`, `HashMap` and others once
+imported.
 
 ## State machines
 

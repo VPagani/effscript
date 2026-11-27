@@ -93,6 +93,9 @@ impl Server {
                 if let Some(ext) = params["options"]["importExtension"].as_str() {
                     opts.import_extension = ext.to_string();
                 }
+                if let Some(p) = params["options"]["prelude"].as_bool() {
+                    opts.prelude = p;
+                }
                 self.projects.insert(handle, opts);
                 // The options come from tsconfig and are already part of the transform identity,
                 // so no `configIdentity` is returned (that requires `dynamicConfig` in the manifest).

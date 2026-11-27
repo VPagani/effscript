@@ -145,7 +145,9 @@ impl Server {
     }
 
     fn session(&mut self, path: &Path) -> &mut efs_check::Session {
-        let ws = efs_check::Workspace::discover(path.parent().unwrap_or(path));
+        let dir = path.parent().unwrap_or(path);
+        let mut ws = efs_check::Workspace::discover(dir);
+        ws.codegen = efs_check::project_codegen_options(dir);
         self.sessions.entry(ws.root.clone()).or_insert_with(|| efs_check::Session::new(ws))
     }
 
@@ -225,7 +227,8 @@ impl Server {
         let Some(text) = self.text_of(path) else { return };
         let index = LineIndex::new(&text);
         let parsed = efs_syntax::parse(&text);
-        let out = efs_codegen::compile_module(&text, &parsed.module, &Default::default());
+        let opts = efs_check::project_codegen_options(path);
+        let out = efs_codegen::compile_module(&text, &parsed.module, &opts);
         let mut diags: Vec<Diagnostic> = Vec::new();
         let mut local_spans = Vec::new();
         for d in parsed.diagnostics.iter().chain(out.diagnostics.iter()) {
@@ -289,12 +292,15 @@ impl Server {
                 let text = self.text_of(&path).ok_or("unknown document")?;
                 let pos = p.text_document_position_params.position;
                 let offset = LineIndex::new(&text).offset(pos.line, pos.character);
-                let Some(info) = self.session(&path).hover(&path, offset) else { return Ok(Value::Null) };
+                let session = self.session(&path);
+                let Some(info) = session.hover(&path, offset) else { return Ok(Value::Null) };
+                let mut value = format!("```ts\n{info}\n```");
+                if session.is_prelude_ref(&path, offset) {
+                    // The file has no import for it, so say where it comes from.
+                    value.push_str("\n\nFrom `effect` (prelude)");
+                }
                 to_json_value(Hover {
-                    contents: HoverContents::Markup(MarkupContent {
-                        kind: MarkupKind::Markdown,
-                        value: format!("```ts\n{info}\n```"),
-                    }),
+                    contents: HoverContents::Markup(MarkupContent { kind: MarkupKind::Markdown, value }),
                     range: None,
                 })
             }
@@ -332,7 +338,7 @@ impl Server {
                     .ok_or("expected a document URI")?;
                 let path = uri_to_path(&uri).ok_or("bad uri")?;
                 let text = self.text_of(&path).ok_or("unknown document")?;
-                Ok(Value::String(efs_codegen::compile(&text, &Default::default()).code))
+                Ok(Value::String(efs_codegen::compile(&text, &efs_check::project_codegen_options(&path)).code))
             }
             _ => Err(format!("unsupported request {}", req.method)),
         }

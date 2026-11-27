@@ -34,6 +34,9 @@ import effscript from "@effscript/vite"
 export default defineConfig({ plugins: [effscript()] })
 ```
 
+The plugins take the compiler's `importExtension` and `prelude` options, for
+example `effscript({ prelude: false })`.
+
 Errors are reported by the bundler with their file, line and column. The
 plugins do not type check: run `efs check` (or the [content
 mapper](typescript.md)) for types.
@@ -53,6 +56,7 @@ const { code, map, diagnostics } = compile(source, { filename: "app.efs", target
 | `filename` | `"input.efs"` | Used in source maps and diagnostics. |
 | `target` | `"ts"` | `"js"` drops types. |
 | `importExtension` | `".js"` | Replaces `.efs` in relative imports. |
+| `prelude` | `true` | Imports the [prelude](language.md#prelude) modules a file uses. `false` turns it off. |
 | `sourceMap` | `true` | Include a Source Map v3. |
 
 `transform(source, file)` is what the plugins use: JavaScript output that

@@ -5,6 +5,8 @@ export interface CompileOptions {
   target?: "js" | "ts"
   /** Replaces `.efs` in relative imports. Default `".js"` for `compile`, `".efs"` for `transform`. */
   importExtension?: string
+  /** Import the core Effect modules a file uses (`Effect`, `Schema`, ...) without an explicit import. Default `true`. */
+  prelude?: boolean
   /** Include a Source Map v3. Default `true`. */
   sourceMap?: boolean
 }

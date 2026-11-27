@@ -221,3 +221,43 @@ export const good = effect {
     assert_eq!(diags[2].message, "`cleanup` is an effect, not a service; run it with `run cleanup`");
     assert!(diags.iter().all(|d| d.file.as_ref().unwrap().ends_with("main.efs")));
 }
+
+#[test]
+fn prelude_names_type_check_and_hover() {
+    let root = root();
+    let modules = root.join("examples/node_modules");
+    if !modules.join("effect").exists() {
+        return;
+    }
+    let tmp = std::env::temp_dir().join(format!("efs-e2e-prelude-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(tmp.join("src")).unwrap();
+    std::fs::copy(root.join("examples/tsconfig.json"), tmp.join("tsconfig.json")).unwrap();
+    std::fs::copy(root.join("examples/package.json"), tmp.join("package.json")).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&modules, tmp.join("node_modules")).unwrap();
+    let src = "export const main: Effect<number> = Effect.succeed(1);\n";
+    let file = tmp.join("src/main.efs");
+    std::fs::write(&file, src).unwrap();
+
+    let mut ws = efs_check::Workspace::discover(&tmp);
+    ws.codegen = efs_check::project_codegen_options(&tmp);
+    let mut session = efs_check::Session::new(ws);
+    let diags = session.type_diagnostics(true);
+    assert!(diags.is_empty(), "{diags:#?}");
+    let at = src.rfind("Effect").unwrap() as u32 + 1;
+    let hover = session.hover(&file, at).unwrap();
+    assert!(hover.contains("effect/dist/Effect"), "{hover}");
+    assert!(session.is_prelude_ref(&file, at));
+    assert!(!session.is_prelude_ref(&file, src.find("succeed").unwrap() as u32));
+
+    // `"prelude": false` in efs.json turns it off.
+    std::fs::write(tmp.join("efs.json"), r#"{ "prelude": false }"#).unwrap();
+    let mut ws = efs_check::Workspace::discover(&tmp);
+    ws.codegen = efs_check::project_codegen_options(&tmp);
+    assert!(!ws.codegen.prelude);
+    let mut session = efs_check::Session::new(ws);
+    let diags = session.type_diagnostics(true);
+    let _ = std::fs::remove_dir_all(&tmp);
+    assert!(diags.iter().any(|d| d.message.contains("Cannot find name 'Effect'")), "{diags:#?}");
+}

@@ -8,7 +8,7 @@
 use serde_json::{Value, json};
 
 /// Compiles `source` with JSON `options`
-/// (`{ filename, target: "js" | "ts", importExtension, sourceMap }`) and returns a JSON result
+/// (`{ filename, target: "js" | "ts", importExtension, prelude, sourceMap }`) and returns a JSON result
 /// (`{ code, map, diagnostics: [{ message, code, severity, start, end, line, column }] }`).
 pub fn compile_json(source: &str, options: &str) -> String {
     let opts: Value = serde_json::from_str(options).unwrap_or(Value::Null);
@@ -19,6 +19,9 @@ pub fn compile_json(source: &str, options: &str) -> String {
     }
     if let Some(ext) = opts["importExtension"].as_str() {
         o.import_extension = ext.to_string();
+    }
+    if let Some(p) = opts["prelude"].as_bool() {
+        o.prelude = p;
     }
     let out = efs_codegen::compile(source, &o);
     let index = efs_syntax::LineIndex::new(source);

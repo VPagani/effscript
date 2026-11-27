@@ -13,6 +13,7 @@ mod writer;
 use efs_syntax::{Diagnostic, Span};
 
 pub use efs_syntax::ast::BindKind;
+pub use lower::PRELUDE;
 pub use writer::{Segment, SegmentKind};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -30,11 +31,13 @@ pub struct Options {
     /// The extension that replaces `.efs` in import specifiers (`.js` by default). Use
     /// `.efs` to keep specifiers unchanged, or an empty string to drop the extension.
     pub import_extension: String,
+    /// Import the [`PRELUDE`] modules that a file uses without importing them (on by default).
+    pub prelude: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { target: Target::TypeScript, import_extension: ".js".into() }
+        Options { target: Target::TypeScript, import_extension: ".js".into(), prelude: true }
     }
 }
 
@@ -47,6 +50,8 @@ pub struct Output {
     /// The `run` and `use` sites whose operand this file alone cannot tell to be a service or
     /// not, for the type checker to decide.
     pub binds: Vec<BindSite>,
+    /// The source spans of names that refer to the [`PRELUDE`] (and are imported for it).
+    pub prelude_refs: Vec<Span>,
 }
 
 /// A `run` or `use` in an effect body, which compiles to `yield* operand`.

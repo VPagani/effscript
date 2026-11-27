@@ -195,6 +195,7 @@ impl Gen<'_> {
                     }
                 }
                 // A schema value such as `UserId` or `Schema.Trim`, or a generic schema factory.
+                self.reference(&name[0].name, name[0].span);
                 for (i, n) in name.iter().enumerate() {
                     if i > 0 {
                         self.w.s(".");

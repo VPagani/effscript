@@ -14,6 +14,19 @@ const TYPE_NAMESPACES: &[&str] = &[
     "Context", "Request", "Metric", "Channel", "Sink", "Schema", "Latch", "Pool",
 ];
 
+/// The prelude: core modules of `effect` that every EffScript file can use without importing
+/// them. A file that uses one gets `import { Name } from "effect"` (merged into an existing
+/// import of `"effect"`), unless the file declares or imports that name itself or a local
+/// binding shadows it where it is used. Names that would shadow JavaScript globals (`Array`,
+/// `String`, `Number`, `Function`, `Record`, ...) are left out on purpose.
+///
+/// The list follows the supported Effect major (Effect 4, see docs/compatibility.md): every
+/// name is a namespace export of the `effect` package's index.
+pub const PRELUDE: &[&str] = &[
+    "Effect", "Layer", "Stream", "Schema", "Console", "Schedule", "Duration", "Config", "Option", "Result", "Exit",
+    "Cause", "Scope", "Fiber", "Ref", "Queue", "Clock", "Random", "DateTime", "Match",
+];
+
 fn runtime_module(name: &str) -> &'static str {
     match name {
         "Machine" => "@typeonce/effect-machine",
@@ -58,6 +71,10 @@ pub(crate) struct Gen<'s> {
     rt_hits: HashSet<String>,
     /// `run` and `use` sites, and what local names are.
     pub(crate) binds: crate::bind::Binds,
+    /// The prelude names bound by the scopes around the code being lowered, innermost last.
+    scopes: Vec<Vec<String>>,
+    /// Source spans of the names that refer to the prelude.
+    prelude_refs: Vec<Span>,
 }
 
 impl<'s> Gen<'s> {
@@ -80,6 +97,8 @@ impl<'s> Gen<'s> {
             keep_imports: None,
             rt_hits: HashSet::new(),
             binds: Default::default(),
+            scopes: Vec::new(),
+            prelude_refs: Vec::new(),
         }
     }
 
@@ -108,6 +127,33 @@ impl<'s> Gen<'s> {
     pub(crate) fn rtm(&mut self, ns: &str, member: &str) {
         let ns = self.rt(ns);
         self.w.s(&format!("{ns}.{member}"));
+    }
+
+    /// Enters a scope that binds `names` (only prelude names matter).
+    pub(crate) fn push_scope(&mut self, names: Vec<String>) {
+        self.scopes.push(names.into_iter().filter(|n| PRELUDE.contains(&n.as_str())).collect());
+    }
+
+    pub(crate) fn pop_scope(&mut self) {
+        self.scopes.pop();
+    }
+
+    /// Whether `name`, referenced here, means the prelude module of that name: the prelude is
+    /// on, and neither the file nor an enclosing scope binds the name.
+    fn is_prelude(&self, name: &str) -> bool {
+        self.opts.prelude
+            && PRELUDE.contains(&name)
+            && !self.bindings.contains_key(name)
+            && !self.scopes.iter().any(|s| s.iter().any(|n| n == name))
+    }
+
+    /// Notes a reference to `name` at `span`. A prelude name gets its import, as long as the
+    /// reference is written out (types in JavaScript output are not).
+    pub(crate) fn reference(&mut self, name: &str, span: Span) {
+        if self.w.mute == 0 && self.is_prelude(name) {
+            self.rt(name);
+            self.prelude_refs.push(span);
+        }
     }
 
     fn collect_bindings(&mut self, module: &Module) {
@@ -188,10 +234,12 @@ impl<'s> Gen<'s> {
         }
     }
 
-    /// Whether `name` refers to an Effect module namespace that has a same-named type.
+    /// Whether `name` refers to an Effect module namespace that has a same-named type: an
+    /// import from `"effect"` or the prelude.
     fn is_type_namespace(&self, name: &str) -> bool {
         TYPE_NAMESPACES.contains(&name)
-            && matches!(self.bindings.get(name), Some(Binding::Import { module, name: n }) if (module == "effect" && n == name) || (n == "*" && module == &format!("effect/{name}")))
+            && (self.is_prelude(name)
+                || matches!(self.bindings.get(name), Some(Binding::Import { module, name: n }) if (module == "effect" && n == name) || (n == "*" && module == &format!("effect/{name}"))))
     }
 
     pub(crate) fn js(&self) -> bool {
@@ -297,7 +345,7 @@ impl<'s> Gen<'s> {
         for b in &mut binds {
             b.gen_pos += shift;
         }
-        Output { code, segments, diagnostics: self.diags, binds }
+        Output { code, segments, diagnostics: self.diags, binds, prelude_refs: self.prelude_refs }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -320,6 +368,11 @@ impl<'s> Gen<'s> {
                 if !list.star && specs.is_empty() && !list.specs.is_empty() {
                     self.w.pop_node();
                     return;
+                }
+                if list.source.is_none() {
+                    for s in &specs {
+                        self.reference(&s.name.name, s.name.span);
+                    }
                 }
                 self.w.s("export ");
                 if list.star {
@@ -344,9 +397,11 @@ impl<'s> Gen<'s> {
                 g.export(item);
                 g.w.s("type ");
                 g.w.v(t.name.span);
+                g.push_scope(t.type_params.iter().map(|tp| tp.name.name.clone()).collect());
                 g.type_params(&t.type_params);
                 g.w.s(" = ");
                 g.ty(&t.ty);
+                g.pop_scope();
             }),
             ItemKind::Service(s) => self.service(item, s),
             ItemKind::Layer(l) => self.layer(item, l),
@@ -523,6 +578,7 @@ impl<'s> Gen<'s> {
         }
         self.w.s("function ");
         self.w.v(f.name.span);
+        self.push_scope(func_names(&f.func));
         self.type_params(&f.func.type_params);
         self.params(&f.func.params);
         if let Some(ret) = &f.func.ret {
@@ -533,15 +589,18 @@ impl<'s> Gen<'s> {
         }
         self.w.s(" ");
         self.func_body_block(&f.func, false);
+        self.pop_scope();
     }
 
     /// `function* <T>(params) { body }`
     pub(crate) fn generator_fn(&mut self, func: &Func) {
         self.w.s("function* ");
+        self.push_scope(func_names(func));
         self.type_params(&func.type_params);
         self.params(&func.params);
         self.w.s(" ");
         self.func_body_block(func, true);
+        self.pop_scope();
     }
 
     fn func_body_block(&mut self, func: &Func, generator: bool) {
@@ -777,6 +836,7 @@ impl<'s> Gen<'s> {
                     self.w.v(name[0].span);
                     self.w.s(".");
                 }
+                self.reference(&name[0].name, name[0].span);
                 for (i, n) in name.iter().enumerate() {
                     if i > 0 {
                         self.w.s(".");
@@ -860,6 +920,7 @@ impl<'s> Gen<'s> {
                 self.w.s(")");
             }
             TypeKind::Typeof(name) => {
+                self.reference(&name[0].name, name[0].span);
                 self.w.s("typeof ");
                 for (i, n) in name.iter().enumerate() {
                     if i > 0 {
@@ -996,6 +1057,7 @@ impl<'s> Gen<'s> {
     // -----------------------------------------------------------------------------------------
 
     pub(crate) fn block(&mut self, b: &Block) {
+        self.push_scope(block_decls(b));
         self.w.push_node(b.span);
         self.w.s("{");
         self.w.indent();
@@ -1007,6 +1069,7 @@ impl<'s> Gen<'s> {
         self.w.nl();
         self.w.s("}");
         self.w.pop_node();
+        self.pop_scope();
     }
 
     pub(crate) fn stmt_in_update(&mut self, s: &Stmt) {
@@ -1071,6 +1134,7 @@ impl<'s> Gen<'s> {
                     self.w.s("(");
                     self.expr(iter);
                     self.w.s(", (");
+                    self.push_scope(pattern_names(pattern));
                     self.pattern(pattern);
                     self.w.s(") => ");
                     // A body that only runs one effect needs no generator.
@@ -1082,6 +1146,7 @@ impl<'s> Gen<'s> {
                         ] => self.arrow_body_expr(inner),
                         _ => self.effect_gen(body),
                     }
+                    self.pop_scope();
                     self.w.s(")");
                 } else {
                     self.w.s(if *kind == LetKind::Let { "for (let " } else { "for (const " });
@@ -1089,7 +1154,9 @@ impl<'s> Gen<'s> {
                     self.w.s(" of ");
                     self.expr(iter);
                     self.w.s(") ");
+                    self.push_scope(pattern_names(pattern));
                     self.block(body);
+                    self.pop_scope();
                 }
             }
             StmtKind::While { cond, body } => {
@@ -1237,6 +1304,8 @@ impl<'s> Gen<'s> {
                 if let Some(q) = self.lookup_rename(name) {
                     self.w.s(&q);
                     self.w.s(".");
+                } else {
+                    self.reference(name, e.span);
                 }
                 self.w.v(e.span);
             }
@@ -1401,6 +1470,7 @@ impl<'s> Gen<'s> {
             self.w.s(")");
             return;
         }
+        self.push_scope(func_names(func));
         self.type_params(&func.type_params);
         self.params(&func.params);
         if let Some(r) = &func.ret {
@@ -1418,6 +1488,7 @@ impl<'s> Gen<'s> {
         }
         self.in_gen = saved;
         self.update = saved_update;
+        self.pop_scope();
     }
 
     fn object(&mut self, props: &[Prop]) {
@@ -1462,6 +1533,8 @@ impl<'s> Gen<'s> {
                 if let Some(q) = self.lookup_rename(&id.name) {
                     self.w.v(id.span);
                     self.w.s(&format!(": {q}."));
+                } else {
+                    self.reference(&id.name, id.span);
                 }
                 self.w.v(id.span);
             }
@@ -1486,6 +1559,7 @@ impl<'s> Gen<'s> {
                     self.func_expr(func, Some(&name));
                 } else {
                     self.prop_key(key);
+                    self.push_scope(func_names(func));
                     self.type_params(&func.type_params);
                     self.params(&func.params);
                     if let Some(r) = &func.ret {
@@ -1496,6 +1570,7 @@ impl<'s> Gen<'s> {
                     }
                     self.w.s(" ");
                     self.func_body_block(func, false);
+                    self.pop_scope();
                 }
                 self.w.pop_node();
             }
@@ -1518,11 +1593,13 @@ impl<'s> Gen<'s> {
                     self.w.nl();
                     self.w.v(arm.tag.span);
                     self.w.s(": (");
+                    self.push_scope(arm.binding.as_ref().map(pattern_names).unwrap_or_default());
                     if let Some(b) = &arm.binding {
                         self.pattern(b);
                     }
                     self.w.s(") => ");
                     self.arrow_body_expr(&arm.body);
+                    self.pop_scope();
                     self.w.pop_node();
                 }
                 self.w.dedent();
@@ -1534,9 +1611,11 @@ impl<'s> Gen<'s> {
                 self.w.s("(");
                 self.expr_top(expr);
                 self.w.s(", (");
+                self.push_scope(pattern_names(binding));
                 self.pattern(binding);
                 self.w.s(") => ");
                 self.arrow_body_expr(body);
+                self.pop_scope();
                 self.w.s(")");
             }
         }
@@ -1559,11 +1638,13 @@ impl<'s> Gen<'s> {
                 self.w.nl();
                 self.w.v(tag.span);
                 self.w.s(": (");
+                self.push_scope(binding.as_ref().map(pattern_names).unwrap_or_default());
                 if let Some(b) = binding {
                     self.pattern(b);
                 }
                 self.w.s(") => ");
                 self.arrow_body_expr(&arm.body);
+                self.pop_scope();
                 self.w.pop_node();
             }
             self.w.dedent();
@@ -1583,6 +1664,11 @@ impl<'s> Gen<'s> {
                 self.w.s(",");
             }
             self.w.nl();
+            let names = match &arm.pattern {
+                MatchPattern::Tag { binding: Some(b), .. } => pattern_names(b),
+                _ => Vec::new(),
+            };
+            self.push_scope(names);
             match &arm.pattern {
                 MatchPattern::Tag { tag, binding } => {
                     self.w.s(&format!("{m}.tag("));
@@ -1607,6 +1693,7 @@ impl<'s> Gen<'s> {
                 }
             }
             self.arrow_body_expr(&arm.body);
+            self.pop_scope();
             self.w.s(")");
             self.w.pop_node();
         }
@@ -2060,4 +2147,55 @@ pub(crate) fn collect_value_names(module: &Module, out: &mut HashSet<String>) {
         }
         // An exported import is a value use.
     }
+}
+
+/// The names a pattern binds.
+pub(crate) fn pattern_names(p: &Pattern) -> Vec<String> {
+    fn go(p: &Pattern, out: &mut Vec<String>) {
+        match &p.kind {
+            PatternKind::Ident(id) => out.push(id.name.clone()),
+            PatternKind::Object { props, rest } => {
+                for prop in props {
+                    match &prop.value {
+                        Some(v) => go(v, out),
+                        None => out.push(prop.key.name.clone()),
+                    }
+                }
+                out.extend(rest.iter().map(|r| r.name.clone()));
+            }
+            PatternKind::Array { elems, rest } => {
+                elems.iter().flatten().for_each(|e| go(e, out));
+                if let Some(r) = rest {
+                    go(r, out);
+                }
+            }
+            PatternKind::Default { pattern, .. } => go(pattern, out),
+        }
+    }
+    let mut out = Vec::new();
+    go(p, &mut out);
+    out
+}
+
+/// The names a function's parameters and type parameters bind.
+fn func_names(f: &Func) -> Vec<String> {
+    let mut out: Vec<String> = f.type_params.iter().map(|tp| tp.name.name.clone()).collect();
+    for p in &f.params {
+        out.extend(pattern_names(&p.pattern));
+    }
+    out
+}
+
+/// The names a block declares with `const`, `let` and `function`; they are in scope in the
+/// whole block.
+pub(crate) fn block_decls(b: &Block) -> Vec<String> {
+    let mut out = Vec::new();
+    for s in &b.stmts {
+        match &s.kind {
+            StmtKind::Let(l) => out.extend(pattern_names(&l.pattern)),
+            StmtKind::Fn(f) => out.push(f.name.name.clone()),
+            _ => {}
+        }
+    }
+    out
 }

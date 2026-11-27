@@ -97,6 +97,14 @@ fn assigned_in(visit: Visit<'_>) -> Vec<(String, Span)> {
 
 impl Gen<'_> {
     pub(crate) fn component(&mut self, item: &Item, c: &Component) {
+        // Props and model fields are used by their bare names everywhere in the component.
+        let names = c.props().chain(c.fields()).map(|f| f.name.name.clone()).collect();
+        self.push_scope(names);
+        self.component_inner(item, c);
+        self.pop_scope();
+    }
+
+    fn component_inner(&mut self, item: &Item, c: &Component) {
         let export = if item.export { "export " } else { "" };
         let name = c.name.name.clone();
         let message_name = format!("{name}Message");
@@ -377,6 +385,12 @@ impl Gen<'_> {
     }
 
     fn update_arm(&mut self, u: &UpdateArm, prop_names: &[String], field_names: &[String]) {
+        self.push_scope(u.fields.iter().map(|f| f.name.name.clone()).collect());
+        self.update_arm_inner(u, prop_names, field_names);
+        self.pop_scope();
+    }
+
+    fn update_arm_inner(&mut self, u: &UpdateArm, prop_names: &[String], field_names: &[String]) {
         self.w.push_node(u.span);
         self.w.v(u.message.span);
         self.w.s(": ($");
@@ -438,6 +452,7 @@ impl Gen<'_> {
         let used_props: Vec<&String> = prop_names.iter().filter(|n| names.contains(n)).collect();
         // Events emitted inside a branch are collected in an array; top-level ones are passed directly.
         let nested_emit = b.stmts.iter().any(|s| !matches!(s.kind, StmtKind::Emit(_)) && stmt_has_emit(s));
+        self.push_scope(crate::lower::block_decls(b));
 
         self.w.push_node(b.span);
         self.w.s("{");
@@ -506,6 +521,7 @@ impl Gen<'_> {
         self.w.nl();
         self.w.s("}");
         self.w.pop_node();
+        self.pop_scope();
     }
 }
 

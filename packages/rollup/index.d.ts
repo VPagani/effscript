@@ -1,6 +1,6 @@
 import type { CompileOptions } from "@effscript/compiler"
 
-export type Options = Pick<CompileOptions, "importExtension">
+export type Options = Pick<CompileOptions, "importExtension" | "prelude">
 
 export interface Plugin {
   name: string

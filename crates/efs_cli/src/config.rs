@@ -1,7 +1,7 @@
 //! `efs.json`: optional project configuration, found next to or above the given path.
 //!
 //! ```json
-//! { "importExtension": ".js", "outDir": "gen", "sourceMap": true, "emit": "js", "declaration": true, "lint": { "disabled": ["unused-binding"] }, "fmt": { "semicolons": false } }
+//! { "importExtension": ".js", "prelude": true, "outDir": "gen", "sourceMap": true, "emit": "js", "declaration": true, "lint": { "disabled": ["unused-binding"] }, "fmt": { "semicolons": false } }
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 #[derive(Clone, Debug)]
 pub struct Config {
     pub import_extension: String,
+    /// Import the core Effect modules a file uses without importing them (default true).
+    pub prelude: bool,
     pub out_dir: Option<PathBuf>,
     pub source_map: bool,
     /// Write JavaScript instead of TypeScript.
@@ -24,6 +26,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             import_extension: ".js".into(),
+            prelude: true,
             out_dir: None,
             source_map: false,
             emit_js: false,
@@ -57,6 +60,9 @@ impl Config {
         if let Some(e) = v["importExtension"].as_str() {
             c.import_extension = e.to_string();
         }
+        if let Some(p) = v["prelude"].as_bool() {
+            c.prelude = p;
+        }
         if let Some(o) = v["outDir"].as_str() {
             c.out_dir = Some(base.join(o));
         }
@@ -81,6 +87,22 @@ impl Config {
     }
 
     pub fn codegen(&self) -> efs_codegen::Options {
-        efs_codegen::Options { import_extension: self.import_extension.clone(), ..Default::default() }
+        efs_codegen::Options {
+            import_extension: self.import_extension.clone(),
+            prelude: self.prelude,
+            ..Default::default()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn prelude_is_on_unless_turned_off() {
+        assert!(Config::default().codegen().prelude);
+        let c = Config::parse(r#"{ "prelude": false }"#, std::path::Path::new("."));
+        assert!(!c.codegen().prelude);
     }
 }

@@ -36,7 +36,10 @@ code generator adopts it and the supported minimum is raised in this table.
 
 1. adds a target version to the code generator, chosen from the installed
    `effect` (or `"effect": "5"` in `efs.json`), with the differences kept in
-   one place rather than scattered through the lowering code;
+   one place rather than scattered through the lowering code; this includes
+   the [prelude](language.md#prelude), the modules in scope without an
+   import, which is kept in one table (`PRELUDE` in `efs_codegen`) and
+   follows the modules each major exports;
 2. supports both majors for the transition, testing each in CI;
 3. drops the old major in a later EffScript major release, after Effect's own
    support for it winds down.

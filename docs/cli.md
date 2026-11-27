@@ -84,6 +84,7 @@ Optional configuration, read from the directory of the given path or above:
 ```json
 {
   "importExtension": ".js",
+  "prelude": true,
   "outDir": "gen",
   "emit": "js",
   "declaration": true,
@@ -93,4 +94,7 @@ Optional configuration, read from the directory of the given path or above:
 }
 ```
 
-`fmt.semicolons` defaults to `true`. Command-line options take precedence.
+`fmt.semicolons` defaults to `true`. `prelude` (default `true`) imports the
+core Effect modules a file uses without importing them (see
+[Prelude](language.md#prelude)); `false` turns it off. `build`, `check`, `emit` and the
+language server follow it. Command-line options take precedence.
