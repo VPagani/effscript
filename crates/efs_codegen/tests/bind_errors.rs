@@ -8,7 +8,7 @@ service Repo {
   all: Effect<number[]>
 }
 const Key = Context.Service<{ n: number }>(\"Key\")
-layer RepoLive for Repo = { all: Effect.succeed([]) }
+const RepoLive = Layer.succeed(Repo, { all: Effect.succeed([]) })
 error Missing
 const program = effect { return 1 }
 effect function load() {
@@ -93,7 +93,7 @@ fn other_operands_are_left_to_the_type_checker() {
 #[test]
 fn generated_positions_account_for_added_imports() {
     // `Layer` is not imported, so codegen adds it to the `effect` import above the sites.
-    let src = "import { Effect } from \"effect\"\nimport { Mailer } from \"./mailer.ts\"\nservice S {\n  n: number\n}\nlayer L for S = { n: 1 }\nexport const main = effect {\n  const m = use Mailer\n}\n";
+    let src = "import { Effect } from \"effect\"\nimport { Mailer } from \"./mailer.ts\"\nservice S {\n  n: number\n}\nconst L = Layer.succeed(S, { n: 1 })\nexport const main = effect {\n  const m = use Mailer\n}\n";
     let out = efs_codegen::compile(src, &Default::default());
     assert!(out.code.contains("import { Effect, Context, Layer }"), "{}", out.code);
     let b = out.binds[0];

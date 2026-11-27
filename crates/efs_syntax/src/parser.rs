@@ -362,8 +362,8 @@ impl<'a> Parser<'a> {
         if self.is_kw_then_ident("service") {
             return ItemKind::Service(self.service());
         }
-        if self.is_kw_then_ident("layer") {
-            return ItemKind::Layer(self.layer());
+        if self.is_kw_then_ident("layer") && self.is_n(2, "for") {
+            return ItemKind::Let(self.removed_layer());
         }
         if self.is_kw_then_ident("error") {
             return ItemKind::Error(self.error_decl());
@@ -636,13 +636,34 @@ impl<'a> Parser<'a> {
         Service { name, key, members }
     }
 
-    fn layer(&mut self) -> LayerDecl {
+    /// The removed `layer Name for Service { ... }` and `layer Name for Service = value`
+    /// declarations: reports them with the Layer API call that replaces them, and reads them
+    /// as `const Name = <body>` so that later diagnostics still see the name.
+    fn removed_layer(&mut self) -> LetDecl {
+        let start = self.start();
         self.expect("layer");
         let name = self.ident();
         self.expect("for");
         let service = self.postfix_expr(false);
-        let body = if self.eat("=") { LayerBody::Value(self.expr()) } else { LayerBody::Effect(self.effect_block()) };
-        LayerDecl { name, service, body }
+        let head = self.span_from(start);
+        let s = service.name_path().unwrap_or_else(|| "Service".into());
+        let n = &name.name;
+        let init = if self.eat("=") {
+            let value = self.expr();
+            let v = if matches!(value.kind, ExprKind::Object(_)) { "{ ... }" } else { "value" };
+            self.error(head, format!("`layer` declarations were removed; write `const {n} = Layer.succeed({s}, {v})`"));
+            value
+        } else {
+            self.error(
+                head,
+                format!("`layer` declarations were removed; write `const {n} = Layer.effect({s}, effect {{ ... }})`"),
+            );
+            let bstart = self.start();
+            let b = self.effect_block();
+            Expr { kind: ExprKind::EffectBlock(b), span: self.span_from(bstart) }
+        };
+        let pattern = Pattern { span: name.span, kind: PatternKind::Ident(name) };
+        LetDecl { kind: LetKind::Const, pattern, ty: None, init: Some(init) }
     }
 
     fn error_decl(&mut self) -> ErrorDecl {

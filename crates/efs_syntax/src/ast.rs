@@ -34,7 +34,6 @@ pub enum ItemKind {
     Fn(FnDecl),
     Type(TypeAlias),
     Service(Service),
-    Layer(LayerDecl),
     Error(ErrorDecl),
     Schema(SchemaDecl),
     Enum(EnumDecl),
@@ -156,20 +155,6 @@ pub struct Service {
     /// Optional explicit key: `service Name("app/Name") { ... }`.
     pub key: Option<StrLit>,
     pub members: Vec<TypeMember>,
-}
-
-/// `layer Name for Service { effect body }` or `layer Name for Service = value`.
-#[derive(Clone, Debug, PartialEq)]
-pub struct LayerDecl {
-    pub name: Ident,
-    pub service: Expr,
-    pub body: LayerBody,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum LayerBody {
-    Effect(Block),
-    Value(Expr),
 }
 
 /// `error Name { field: Type }`

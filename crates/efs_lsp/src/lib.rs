@@ -404,7 +404,6 @@ pub fn symbols(text: &str) -> Vec<DocumentSymbol> {
             }
             ItemKind::Type(t) => (&t.name, "type", SymbolKind::TYPE_PARAMETER, vec![]),
             ItemKind::Service(s) => (&s.name, "service", SymbolKind::INTERFACE, vec![]),
-            ItemKind::Layer(l) => (&l.name, "layer", SymbolKind::OBJECT, vec![]),
             ItemKind::Error(e) => (&e.name, "error", SymbolKind::CLASS, vec![]),
             ItemKind::Schema(s) => (&s.name, "schema", SymbolKind::STRUCT, vec![]),
             ItemKind::Enum(e) => (
@@ -475,7 +474,6 @@ pub fn definition(text: &str, offset: u32) -> Option<Span> {
             }) => Some(id),
             ItemKind::Type(t) => Some(&t.name),
             ItemKind::Service(s) => Some(&s.name),
-            ItemKind::Layer(l) => Some(&l.name),
             ItemKind::Error(e) => Some(&e.name),
             ItemKind::Schema(s) => Some(&s.name),
             ItemKind::Enum(e) => Some(&e.name),
@@ -599,10 +597,6 @@ fn collect_item_bindings(item: &Item, out: &mut Vec<(String, Span)>) {
                 expr_bindings(i, out);
             }
         }
-        ItemKind::Layer(l) => match &l.body {
-            LayerBody::Effect(b) => block_bindings(b, out),
-            LayerBody::Value(v) => expr_bindings(v, out),
-        },
         ItemKind::Stmt(s) => block_bindings(&Block { stmts: vec![s.clone()], span: s.span }, out),
         _ => {}
     }

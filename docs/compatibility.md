@@ -17,8 +17,8 @@ one clear warning rather than as type errors in generated code.
 ## How EffScript keeps up
 
 **Source stays stable; output follows Effect.** EffScript syntax names
-concepts (`effect function`, `run`, `use`, `service`, `layer`, `error`,
-`catch`, `with`) rather than Effect's function names, so most Effect API
+concepts (`effect function`, `run`, `use`, `service`, `error`, `catch`,
+`with`) rather than Effect's function names, so most Effect API
 changes are absorbed by the code generator and need no change to `.efs`
 files. When Effect renames `Context.Tag` to `Context.Service`, or
 `catchTags` changes shape, the next EffScript release generates the new
@@ -47,7 +47,8 @@ code generator adopts it and the supported minimum is raised in this table.
 New Effect features that need syntax (as `Effect.fn` needed
 `effect function`) are added to the language in a minor EffScript release.
 Syntax is only removed in an EffScript major, with an error that names the
-replacement, as with `initial state`.
+replacement, as with `initial state` and the `layer` declarations that
+gave way to Effect's own `Layer` API.
 
 **Pre-1.0 libraries.** `@typeonce/effect-machine` and Effect UI change faster
 than Effect itself. Their syntax in EffScript (`machine`, `component`) is

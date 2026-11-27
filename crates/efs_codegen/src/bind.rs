@@ -57,6 +57,19 @@ fn is_service_constructor(e: &Expr) -> bool {
 fn classify_init(name: &str, init: &Expr) -> Option<DeclKind> {
     Some(match &init.kind {
         _ if is_service_constructor(init) => DeclKind::Service,
+        ExprKind::Call { callee, args, .. }
+            if callee.name_path().is_some_and(|p| p.strip_prefix("Layer.").is_some_and(|m| !m.contains('.'))) =>
+        {
+            let service = match args.first() {
+                Some(ArrayElem::Expr(s)) => s.name_path(),
+                _ => None,
+            };
+            let advice = match service {
+                Some(s) => format!("provide it with `with {name}` and get the service with `use {s}`"),
+                None => format!("provide it with `with {name}`"),
+            };
+            DeclKind::Other("a layer", Some(advice))
+        }
         ExprKind::Func(f) if f.effect => effect_function(name),
         ExprKind::Func(_) => DeclKind::Other("a function", None),
         ExprKind::EffectBlock(_) | ExprKind::Pipe(_) | ExprKind::With { .. } | ExprKind::Catch { .. } => {
@@ -78,13 +91,6 @@ impl Binds {
         for item in &module.items {
             let (id, kind) = match &item.kind {
                 ItemKind::Service(s) => (&s.name, DeclKind::Service),
-                ItemKind::Layer(l) => {
-                    let advice = match l.service.name_path() {
-                        Some(s) => format!("provide it with `with {}` and get the service with `use {s}`", l.name.name),
-                        None => format!("provide it with `with {}`", l.name.name),
-                    };
-                    (&l.name, DeclKind::Other("a layer", Some(advice)))
-                }
                 ItemKind::Error(e) => (
                     &e.name,
                     DeclKind::Other("an error", Some(format!("fail with it with `fail new {}(...)`", e.name.name))),

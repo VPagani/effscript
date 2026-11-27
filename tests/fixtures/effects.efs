@@ -14,12 +14,12 @@ service Cache {
   set(key: string, value: string): Effect<void>;
 }
 
-layer ClockLive for Clock = {
+const ClockLive = Layer.succeed(Clock, {
   now: Effect.sync(() => Date.now()),
   sleep: (ms) => Effect.sleep(ms),
-};
+});
 
-layer CacheLive for Cache {
+const CacheLive = Layer.effect(Cache, effect {
   const store = new Map<string, string>();
   const _clock = use Clock;
   defer Console.log("cache closed");
@@ -35,7 +35,7 @@ layer CacheLive for Cache {
       store.set(key, value);
     }),
   };
-}
+});
 
 export effect function lookup(key: string): Effect<string, NotFound, Cache> {
   const cache = use Cache;

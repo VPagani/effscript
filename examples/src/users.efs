@@ -10,7 +10,7 @@ export service Session {
   current: Effect<UserId, Unauthorized>;
 }
 
-export layer UserRepoLive for UserRepo {
+export const UserRepoLive = Layer.effect(UserRepo, effect {
   const users = new Map<UserId, User>();
   run Console.log("UserRepo ready");
   return {
@@ -23,11 +23,11 @@ export layer UserRepoLive for UserRepo {
     },
     all: Effect.sync(() => [...users.values()]),
   };
-}
+});
 
-export layer SessionTest for Session = {
+export const SessionTest = Layer.succeed(Session, {
   current: Effect.succeed(UserId.make("u-1")),
-};
+});
 
 export effect function currentUser() {
   const session = use Session;

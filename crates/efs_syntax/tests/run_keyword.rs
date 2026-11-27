@@ -107,8 +107,11 @@ fn use_is_only_allowed_in_effect_bodies() {
     assert!(e[0].contains("`use` can only be used inside"), "{e:?}");
     let e = errors("effect function f() {\n  const g = () => use Repo\n}");
     assert_eq!(e.len(), 1, "{e:?}");
-    // Layer bodies are effect bodies.
-    assert!(errors("layer RepoLive for Repo {\n  const sql = use Sql\n  return { all: sql.all }\n}").is_empty());
+    // A layer built with `effect { }` is an effect body.
+    assert!(
+        errors("const RepoLive = Layer.effect(Repo, effect {\n  const sql = use Sql\n  return { all: sql.all }\n})")
+            .is_empty()
+    );
     let e = errors("component C {\n  update Clicked {\n    use Repo\n  }\n  view => h.div\n}");
     assert_eq!(e.len(), 1, "{e:?}");
     assert!(e[0].contains("an update cannot get services"), "{e:?}");

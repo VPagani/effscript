@@ -285,23 +285,6 @@ impl Printer<'_> {
                 self.w(" ");
                 self.members(&s.members, item.span, true, true);
             }
-            ItemKind::Layer(l) => {
-                self.w("layer ");
-                self.ident(&l.name);
-                self.w(" for ");
-                self.expr(&l.service);
-                match &l.body {
-                    LayerBody::Effect(b) => {
-                        self.w(" ");
-                        self.block(b);
-                    }
-                    LayerBody::Value(v) => {
-                        self.w(" = ");
-                        self.expr(v);
-                        self.semi();
-                    }
-                }
-            }
             ItemKind::Error(e) => {
                 self.w("error ");
                 self.ident(&e.name);

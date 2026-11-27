@@ -8,6 +8,12 @@ that you could not have written by hand.
 For how EffScript works alongside TypeScript code, see
 [TypeScript interop](typescript.md).
 
+EffScript adds syntax only where TypeScript forces boilerplate that hides what
+the code means (generators for `async`-style effects, classes for services and
+errors, schema builders), not to rename an Effect API that already reads well.
+That is why there is no syntax for layers: `Layer.effect(Cache, effect { ... })`
+says what it does.
+
 EffScript is **not** a superset of TypeScript. It keeps the parts of TypeScript that
 read well (expressions, types, imports) and leaves out what Effect code does not
 need (classes, `async`, decorators, `var`, `this`). Bindings work as in
@@ -17,7 +23,7 @@ JavaScript: `const` cannot be reassigned, `let` can.
 - [Effects](#effects): `effect function`, `effect` arrows, `effect { }`, `run`, `use`, `fail`, `defer`, `for run`
 - [Pipelines, layers and errors](#pipelines-layers-and-errors): `|>`, `with`, `catch`
 - [Matching](#matching): `match`
-- [Services and layers](#services-and-layers): `service`, `layer`
+- [Services and layers](#services-and-layers): `service`, and layers with Effect's `Layer` API
 - [Errors, schemas and enums](#errors-schemas-and-enums): `error`, `schema`, `enum`
 - [The prelude](#prelude): `Effect`, `Schema`, `Stream`, ... without imports
 - [Type sugar](#type-sugar)
@@ -201,14 +207,37 @@ Match.when(...), Match.orElse(...))` chain (`Match.exhaustive` without `_`).
 
 ## Services and layers
 
+`service` declares a service: its name and the shape of its implementation.
+
 ```efs
 service UserRepo {
   find(id: UserId): Effect<User, UserNotFound>;
   all: Effect<readonly User[]>;
 }
+```
 
-layer UserRepoLive for UserRepo {
+| EffScript | TypeScript |
+| --- | --- |
+| `service Name { member: T }` | `class Name extends Context.Service<Name, { readonly member: T }>()("Name") {}` |
+| `service Name("app/Name") { }` | the same with an explicit key |
+| `use Name` (in an effect body) | `yield* Name`: gets the service, see [`use` and `run`](#use-and-run) |
+| method members `m(a: A): R` | `readonly m: (a: A) => R` |
+
+Implementations are **layers**, written with Effect's
+[`Layer`](https://effect.website/docs/requirements-management/layers/) module
+(in scope through the [prelude](#prelude)). `Layer.succeed` takes the
+implementation as a value; `Layer.effect` builds it with an effect, which an
+`effect { }` block writes with `use`, `run` and `defer`:
+
+```efs
+export const UserRepoTest = Layer.succeed(UserRepo, {
+  find: (id) => Effect.fail(new UserNotFound({ id })),
+  all: Effect.succeed([]),
+});
+
+export const UserRepoLive = Layer.effect(UserRepo, effect {
   const sql = use Sql;
+  defer Console.log("UserRepo closed");
   return {
     effect find(id: UserId) {
       const row = run sql.one(id);
@@ -219,30 +248,29 @@ layer UserRepoLive for UserRepo {
     },
     all: sql.all,
   };
-}
-
-layer UserRepoTest for UserRepo = {
-  find: (id) => Effect.fail(new UserNotFound({ id })),
-  all: Effect.succeed([]),
-};
+});
 ```
 
-| EffScript | TypeScript |
-| --- | --- |
-| `service Name { member: T }` | `class Name extends Context.Service<Name, { readonly member: T }>()("Name") {}` |
-| `service Name("app/Name") { }` | the same with an explicit key |
-| `use Name` (in an effect body) | `yield* Name`: gets the service, see [`use` and `run`](#use-and-run) |
-| method members `m(a: A): R` | `readonly m: (a: A) => R` |
-| `layer L for S { effect body }` | `const L = Layer.effect(S, Effect.gen(function* () { ... }))` |
-| `layer L for S = value` | `const L = Layer.succeed(S, value)` |
-| `effect m(params) { }` in the object a layer returns | `m: Effect.fn("S.m")(function* (params) { })` |
+Layers are ordinary values, so they are combined with the `Layer` API too and
+provided with [`with`](#pipelines-layers-and-errors):
+
+```efs
+export const RepoLive = UserRepoLive |> Layer.provide(SqlLive);
+export const AppLive = Layer.mergeAll(RepoLive, SessionLive);
+
+export const main = program with AppLive;
+```
+
+Everything else Effect offers for layers (`Layer.unwrap`, `Layer.effectDiscard`,
+layers that take parameters, memoization) works as in TypeScript; see Effect's
+[layer documentation](https://effect.website/docs/requirements-management/layers/).
 
 ### Trace names
 
-An `effect` method in an object literal compiles to `Effect.fn("method")`.
-When the object is a service's implementation, returned by a `layer`
-declaration or written in one of these shapes, the span is named after the
-service instead, `Effect.fn("UserRepo.find")`:
+An `effect` method in an object literal compiles to
+`Effect.fn("method")`. When the object is a service's implementation, written
+in one of these shapes, the span is named after the service instead,
+`Effect.fn("UserRepo.find")`:
 
 | Shape | The object |
 | --- | --- |

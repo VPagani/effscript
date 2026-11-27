@@ -34,9 +34,10 @@ export const main = greet(UserId.make("u-1"))
   JavaScript with source maps. There is no runtime. Core modules such as
   `Effect`, `Schema` and `Console` need no import (the
   [prelude](docs/language.md#prelude)); the output imports them.
-- **The whole ecosystem.** Services, layers, errors, schemas, `match`,
-  streams, [effect-machine](https://github.com/typeonce-dev/effect-machine)
-  state machines and [Effect UI](https://ui.effect.website/) components with
+- **The whole ecosystem.** Services, errors, schemas, `match`, streams,
+  layers (with Effect's own `Layer` API),
+  [effect-machine](https://github.com/typeonce-dev/effect-machine) state
+  machines and [Effect UI](https://ui.effect.website/) components with
   JSX-like markup.
 - **Real types.** Type checked by
   [tsrs](https://github.com/oxc-project/tsrs), the Rust port of the

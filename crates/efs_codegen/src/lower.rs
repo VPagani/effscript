@@ -184,7 +184,6 @@ impl<'s> Gen<'s> {
                 ItemKind::Fn(f) => self.local(&f.name),
                 ItemKind::Type(t) => self.local(&t.name),
                 ItemKind::Service(s) => self.local(&s.name),
-                ItemKind::Layer(l) => self.local(&l.name),
                 ItemKind::Error(e) => {
                     self.local(&e.name);
                     self.local_errors.push(e.name.name.clone());
@@ -408,7 +407,6 @@ impl<'s> Gen<'s> {
                 g.pop_scope();
             }),
             ItemKind::Service(s) => self.service(item, s),
-            ItemKind::Layer(l) => self.layer(item, l),
             ItemKind::Error(e) => {
                 self.export(item);
                 self.w.s("class ");
@@ -646,43 +644,6 @@ impl<'s> Gen<'s> {
             None => self.w.s(&format!("\"{}\"", s.name.name)),
         }
         self.w.s(") {}");
-    }
-
-    fn layer(&mut self, item: &Item, l: &LayerDecl) {
-        self.export(item);
-        self.w.s("const ");
-        self.w.v(l.name.span);
-        self.w.s(" = ");
-        // The object literals the layer returns implement the service.
-        let service = l.service.span.text(self.src).to_string();
-        let mut found = Vec::new();
-        match &l.body {
-            LayerBody::Effect(b) => returned_exprs(b, &mut found),
-            LayerBody::Value(v) => found.push(unwrap_expr(v)),
-        }
-        for x in found {
-            if matches!(x.kind, ExprKind::Object(_)) {
-                self.service_objects.insert(x.span, service.clone());
-            }
-        }
-        match &l.body {
-            LayerBody::Effect(b) => {
-                self.rtm("Layer", "effect");
-                self.w.s("(");
-                self.expr(&l.service);
-                self.w.s(", ");
-                self.effect_gen(b);
-                self.w.s(")");
-            }
-            LayerBody::Value(v) => {
-                self.rtm("Layer", "succeed");
-                self.w.s("(");
-                self.expr(&l.service);
-                self.w.s(", ");
-                self.expr_top(v);
-                self.w.s(")");
-            }
-        }
     }
 
     /// `Effect.gen(function* () { ... })`
@@ -2175,13 +2136,6 @@ pub(crate) fn collect_value_names(module: &Module, out: &mut HashSet<String>) {
                 }
             }
             ItemKind::Fn(f) => func(&f.func, out),
-            ItemKind::Layer(l) => {
-                expr(&l.service, out);
-                match &l.body {
-                    LayerBody::Effect(b) => block(b, out),
-                    LayerBody::Value(v) => expr(v, out),
-                }
-            }
             ItemKind::Schema(s) => match &s.kind {
                 SchemaKind::Struct(f) | SchemaKind::Class(f) | SchemaKind::Tagged(f) => fields(f, out),
                 SchemaKind::Alias(t) => schema_type(t, out),

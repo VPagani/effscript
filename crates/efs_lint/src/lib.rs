@@ -354,10 +354,6 @@ impl Linter {
                     self.pascal(&v.name, "variant");
                 }
             }
-            ItemKind::Layer(l) => match &l.body {
-                LayerBody::Effect(b) => self.block(b, true),
-                LayerBody::Value(v) => self.expr(v, false),
-            },
             ItemKind::Machine(m) => self.machine(m),
             ItemKind::Component(c) => self.component(c),
             ItemKind::Stmt(s) => self.stmt(s, false),

@@ -6,9 +6,9 @@ service Audience {
   names: readonly string[];
 }
 
-layer AudienceLive for Audience = {
+const AudienceLive = Layer.succeed(Audience, {
   names: ["bundlers", "plugins"],
-};
+});
 
 export effect function greet() {
   const audience = use Audience;

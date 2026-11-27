@@ -48,7 +48,7 @@
     "declarations": {
       "patterns": [
         {
-          "match": "\\b(service|layer|error|schema|enum|machine|component|type)\\s+(class\\s+)?([A-Za-z_$][\\w$]*)",
+          "match": "\\b(service|error|schema|enum|machine|component|type)\\s+(class\\s+)?([A-Za-z_$][\\w$]*)",
           "captures": {
             "1": { "name": "storage.type.efs" },
             "2": { "name": "storage.modifier.efs" },
