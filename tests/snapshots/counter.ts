@@ -3,7 +3,7 @@ import { Html } from "@effect/ui/html"
 import { UiSchema } from "@effect/ui"
 
 export const CounterMessage = UiSchema.TaggedEnum({
-  ClickedIncrement: { amount: Schema.Number },
+  ClickedIncrement: { amount: Schema.Finite },
   ClickedReset: {}
 })
 export const CounterEvents = UiSchema.TaggedEnum({
@@ -12,7 +12,7 @@ export const CounterEvents = UiSchema.TaggedEnum({
 export const Counter = Html.component({
   name: "Counter",
   props: Schema.Struct({ label: Schema.String }),
-  model: Schema.Struct({ count: Schema.Number, history: Schema.Array(Schema.Number) }),
+  model: Schema.Struct({ count: Schema.Finite, history: Schema.Array(Schema.Finite) }),
   message: CounterMessage,
   events: CounterEvents
 }).make({
@@ -50,7 +50,7 @@ export const DashboardMessage = UiSchema.TaggedEnum({
 })
 export const Dashboard = Html.component({
   name: "Dashboard",
-  model: Schema.Struct({ resets: Schema.Number }),
+  model: Schema.Struct({ resets: Schema.Finite }),
   message: DashboardMessage
 }).make({
   init: ($) => ({ resets: 0 }),

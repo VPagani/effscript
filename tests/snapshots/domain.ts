@@ -12,18 +12,18 @@ export const User = Schema.Struct({
 })
 export type User = typeof User.Type
 
-export class Account extends Schema.Class<Account>("Account")({
+export class Account extends Schema.Class<Account, { readonly brand: unique symbol }>("Account")({
   owner: UserId,
-  balance: Schema.Number
+  balance: Schema.Finite
 }) {}
 
 export const Deposited = Schema.TaggedStruct("Deposited", {
-  amount: Schema.Number
+  amount: Schema.Finite
 })
 export type Deposited = typeof Deposited.Type
 
 export const Withdrew = Schema.TaggedStruct("Withdrew", {
-  amount: Schema.Number
+  amount: Schema.Finite
 })
 export type Withdrew = typeof Withdrew.Type
 

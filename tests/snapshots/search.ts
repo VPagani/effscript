@@ -54,9 +54,9 @@ export const Search = Machine.make({
   }
 })
 
-export const CounterState = Machine.state({ fields: { count: Schema.Number } })
+export const CounterState = Machine.state({ fields: { count: Schema.Finite } })
 export const CounterEvents = Machine.events({
-  Increment: { by: Schema.Number },
+  Increment: { by: Schema.Finite },
   Decrement: {}
 })
 export const Counter = Machine.make({

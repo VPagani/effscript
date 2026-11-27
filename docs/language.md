@@ -101,7 +101,7 @@ export const transfer = Effect.fn("transfer")(function* (from: AccountId, to: Ac
 | `effect { ... }` | `Effect.gen(function* () { ... })` |
 | `const x = run e` | `const x = yield* e` |
 | `run e` (statement), `(run e) + 1` (in an expression) | `yield* e`, `(yield* e) + 1` |
-| `fail e` | `return yield* Effect.fail(e)` |
+| `fail e` | `return yield* Effect.fail(e)`; `return yield* e` when `e` is `new E(...)` of an `error` declared in the file |
 | `defer e` | `yield* Effect.addFinalizer(() => e)` |
 | `for run x of stream { ... }` | `yield* Stream.runForEach(stream, (x) => Effect.gen(function* () { ... }))` |
 
@@ -226,7 +226,7 @@ enum Shape {
 | --- | --- |
 | `error E { f: T }` | `class E extends Data.TaggedError("E")<{ readonly f: T }> {}` |
 | `schema S { ... }` | `const S = Schema.Struct({ ... }); type S = typeof S.Type` |
-| `schema class S { ... }` | `class S extends Schema.Class<S>("S")({ ... }) {}` |
+| `schema class S { ... }` | `class S extends Schema.Class<S, { readonly brand: unique symbol }>("S")({ ... }) {}`, a nominal class |
 | `tagged schema S { ... }` | `const S = Schema.TaggedStruct("S", { ... })` and its type |
 | `schema S = T` | `const S = <schema of T>` and its type |
 | `enum E { V { f: T } }` | `type E = Data.TaggedEnum<{ V: { readonly f: T } }>; const E = Data.taggedEnum<E>()` |
@@ -235,7 +235,8 @@ Schema fields are written as **types** and translated to schemas:
 
 | Type | Schema |
 | --- | --- |
-| `String`, `Number`, `Boolean`, `BigInt`, `Date`, `Unknown`, ... (or lowercase `string`, ...) | `Schema.String`, `Schema.Number`, ... |
+| `String`, `Boolean`, `BigInt`, `Date`, `Unknown`, ... (or lowercase `string`, ...) | `Schema.String`, `Schema.Boolean`, ... |
+| `Number`, `number` | `Schema.Finite`: rejects `NaN` and `Infinity`, as Effect recommends. Write `field = Schema.Number` to accept them. |
 | `"a"`, `1`, `true` | `Schema.Literal("a")`, ... |
 | `"a" \| "b"` | `Schema.Literals(["a", "b"])` |
 | `A \| B` | `Schema.Union([A, B])` |

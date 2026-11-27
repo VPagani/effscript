@@ -50,6 +50,8 @@ pub(crate) struct Gen<'s> {
     pub(crate) update: Option<crate::component::UpdateCtx>,
     /// For each module imported with braces, where extra names can be inserted.
     import_slots: Vec<(String, u32)>,
+    /// Errors declared with `error` in this module; their instances can be yielded directly.
+    local_errors: Vec<String>,
 }
 
 impl<'s> Gen<'s> {
@@ -68,6 +70,7 @@ impl<'s> Gen<'s> {
             comp: None,
             update: None,
             import_slots: Vec::new(),
+            local_errors: Vec::new(),
         }
     }
 
@@ -120,7 +123,10 @@ impl<'s> Gen<'s> {
                 ItemKind::Type(t) => self.local(&t.name),
                 ItemKind::Service(s) => self.local(&s.name),
                 ItemKind::Layer(l) => self.local(&l.name),
-                ItemKind::Error(e) => self.local(&e.name),
+                ItemKind::Error(e) => {
+                    self.local(&e.name);
+                    self.local_errors.push(e.name.name.clone());
+                }
                 ItemKind::Schema(s) => self.local(&s.name),
                 ItemKind::Enum(e) => self.local(&e.name),
                 ItemKind::Machine(m) => {
@@ -941,7 +947,13 @@ impl<'s> Gen<'s> {
                     self.w.s(", (");
                     self.pattern(pattern);
                     self.w.s(") => ");
-                    self.effect_gen(body);
+                    // A body that only runs one effect needs no generator.
+                    match body.stmts.as_slice() {
+                        [Stmt { kind: StmtKind::Expr(Expr { kind: ExprKind::Bind(inner), .. }), .. }] => {
+                            self.arrow_body_expr(inner)
+                        }
+                        _ => self.effect_gen(body),
+                    }
                     self.w.s(")");
                 } else {
                     self.w.s(if *kind == LetKind::Let { "for (let " } else { "for (const " });
@@ -965,10 +977,17 @@ impl<'s> Gen<'s> {
                     self.error(s.span, "`fail` can only be used inside an effect body");
                 }
                 self.w.s("return yield* ");
-                self.rtm("Effect", "fail");
-                self.w.s("(");
-                self.expr_top(e);
-                self.w.s(")");
+                // Tagged errors are yieldable: `yield* new NotFound(...)` fails with them directly.
+                let yieldable = matches!(&e.kind, ExprKind::New { callee, .. }
+                    if matches!(&callee.kind, ExprKind::Ident(n) if self.local_errors.contains(n)));
+                if yieldable {
+                    self.expr_top(e);
+                } else {
+                    self.rtm("Effect", "fail");
+                    self.w.s("(");
+                    self.expr_top(e);
+                    self.w.s(")");
+                }
             }
             StmtKind::Defer(e) => {
                 if !self.in_gen {

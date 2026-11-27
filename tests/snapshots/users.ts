@@ -49,7 +49,5 @@ export const program = Effect.gen(function* () {
   const message = yield* main
   yield* Console.log(message)
   yield* Effect.addFinalizer(() => Console.log("done"))
-  yield* Stream.runForEach(pipe(Stream.make(1, 2, 3), Stream.map((n) => n * 2)), (n) => Effect.gen(function* () {
-    yield* Console.log(n)
-  }))
+  yield* Stream.runForEach(pipe(Stream.make(1, 2, 3), Stream.map((n) => n * 2)), (n) => Console.log(n))
 })

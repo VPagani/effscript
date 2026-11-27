@@ -29,7 +29,7 @@ const CacheLive = Layer.effect(Cache, Effect.gen(function* () {
     get: Effect.fn("Cache.get")(function* (key: string) {
       const value = store.get(key)
       if (value === undefined) {
-        return yield* Effect.fail(new NotFound({ id: key }))
+        return yield* new NotFound({ id: key })
       }
       return value
     }),
@@ -59,9 +59,7 @@ export const anonymous = Effect.fnUntraced(function* (n: number) {
 export const total = Effect.gen(function* () {
   const a = yield* Effect.succeed(1)
   const b = (yield* Effect.succeed(2)) + a
-  yield* Stream.runForEach(Stream.range(1, 3), (n) => Effect.gen(function* () {
-    yield* Console.log(n + b)
-  }))
+  yield* Stream.runForEach(Stream.range(1, 3), (n) => Console.log(n + b))
   return a + b
 })
 
@@ -86,8 +84,6 @@ export const ran = run("build")
 export const sumBoth = Effect.gen(function* () {
   const a = yield* doubled(1)
   const b = (yield* traced(2)) + a
-  yield* Stream.runForEach(Stream.make(a, b), (tick) => Effect.gen(function* () {
-    yield* Console.log(tick)
-  }))
+  yield* Stream.runForEach(Stream.make(a, b), (tick) => Console.log(tick))
   return b
 })

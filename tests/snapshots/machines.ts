@@ -1,7 +1,7 @@
 import { Effect, Stream, Schema } from "effect"
 import { Machine } from "@typeonce/effect-machine"
 
-export const CheckoutState = Machine.state({ fields: { attempts: Schema.Number }, states: {
+export const CheckoutState = Machine.state({ fields: { attempts: Schema.Finite }, states: {
   Cart: {},
   Payment: { states: {
     Entering: {},
@@ -19,7 +19,7 @@ export const CheckoutEvents = Machine.events({
 })
 export const Checkout = Machine.make({
   root: CheckoutState,
-  input: Schema.Number,
+  input: Schema.Finite,
   events: CheckoutEvents,
   effects: {
     charge: (card: string) => Effect.succeed(card.length)

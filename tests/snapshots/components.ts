@@ -50,7 +50,7 @@ export const SearchBoxMessage = UiSchema.TaggedEnum({
 })
 export const SearchBox = Html.component({
   name: "SearchBox",
-  model: Schema.Struct({ query: Schema.String, results: Schema.Array(Schema.String), strict: Schema.Boolean, searches: Schema.Number }),
+  model: Schema.Struct({ query: Schema.String, results: Schema.Array(Schema.String), strict: Schema.Boolean, searches: Schema.Finite }),
   message: SearchBoxMessage
 }).make({
   init: ($) => ({ query: "", results: [], strict: false, searches: 0 }),

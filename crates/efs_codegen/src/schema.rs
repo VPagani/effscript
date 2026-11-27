@@ -7,7 +7,8 @@ use crate::lower::Gen;
 fn primitive(name: &str) -> Option<&'static str> {
     Some(match name {
         "String" | "string" => "String",
-        "Number" | "number" => "Number",
+        // Finite numbers: Effect recommends rejecting NaN and Infinity by default.
+        "Number" | "number" => "Finite",
         "Boolean" | "boolean" => "Boolean",
         "BigInt" | "bigint" => "BigInt",
         "Unknown" | "unknown" => "Unknown",
@@ -59,7 +60,8 @@ impl Gen<'_> {
                 self.rtm("Schema", "Class");
                 self.w.s("<");
                 self.w.v(s.name.span);
-                self.w.s(&format!(">({name:?})("));
+                // The brand makes the class nominal, so structurally equal objects are not instances.
+                self.w.s(&format!(", {{ readonly brand: unique symbol }}>({name:?})("));
                 self.schema_struct_fields(fields);
                 self.w.s(") {}");
                 return;
