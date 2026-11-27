@@ -179,7 +179,8 @@ fn main() -> ExitCode {
             ws.codegen = cfg.codegen();
             let mut session = efs_check::Session::new(ws);
             let started = std::time::Instant::now();
-            let mut diags = session.efs_diagnostics();
+            let mut diags = efs_check::compat::check_versions(&session.workspace.root);
+            diags.extend(session.efs_diagnostics());
             let local: Vec<(Option<PathBuf>, u32)> =
                 diags.iter().filter_map(|d| Some((d.file.clone(), d.line_col()?.0))).collect();
             for d in session.type_diagnostics(efs_only) {

@@ -18,3 +18,4 @@ tsrs_core.workspace = true
 tsrs_diagnostics.workspace = true
 tsrs_tsoptions.workspace = true
 tsrs_vfs.workspace = true
+serde_json.workspace = true

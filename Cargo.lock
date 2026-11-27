@@ -182,6 +182,7 @@ version = "0.1.0"
 dependencies = [
  "efs_codegen",
  "efs_syntax",
+ "serde_json",
  "tsrs_ast",
  "tsrs_astnav",
  "tsrs_checker",

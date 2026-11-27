@@ -1,0 +1,35 @@
+name: Compatibility
+
+# Tests against the newest releases in the supported ranges, so a new Effect
+# minor that breaks the generated code is found early. See docs/compatibility.md.
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+jobs:
+  latest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.100.0"
+          targets: wasm32-unknown-unknown
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+      - uses: Swatinem/rust-cache@v2
+      - name: Install the newest supported releases
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter efs-examples add effect@^4 @typeonce/effect-machine@~0.47 @effect/tsgo@latest
+          pnpm --filter @effscript/bundler-tests add effect@^4
+          pnpm list -r --depth 0 effect @typeonce/effect-machine @effect/tsgo
+      - run: cargo test --workspace
+      - name: Type check the examples, with Effect Language Service diagnostics
+        run: cargo run -q -p efs_cli -- check --effect examples
+      - name: Build with every bundler plugin and run the output
+        run: pnpm test:bundlers

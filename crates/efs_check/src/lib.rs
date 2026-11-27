@@ -5,6 +5,7 @@
 //! built from the project's `tsconfig.json` plus those virtual files, and positions in
 //! diagnostics and hovers are mapped back to the EffScript source through the span map.
 
+pub mod compat;
 pub mod effect_tsgo;
 
 use std::collections::{BTreeMap, HashMap};
