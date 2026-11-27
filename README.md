@@ -5,6 +5,8 @@ Effect what JSX was to React: a small language that compiles to the
 TypeScript you would write by hand, minus the incantations. If you know
 `async function` and `await`, you already know `effect function` and `run`.
 
+Try it in the browser at **[effscript.vpagani.dev/playground](https://effscript.vpagani.dev/playground)**.
+
 ```efs
 error UserNotFound { id: UserId }
 
@@ -59,6 +61,7 @@ efs init hello && cd hello && pnpm install && efs check && efs build
 
 ## Documentation
 
+- [Website and playground](https://effscript.vpagani.dev)
 - [Getting started](docs/getting-started.md)
 - [Language guide](docs/language.md): every construct and what it compiles to
 - [The `efs` command](docs/cli.md) and [lint rules](docs/lint.md)
