@@ -221,6 +221,7 @@ version = "0.1.0"
 dependencies = [
  "efs_codegen",
  "efs_syntax",
+ "serde_json",
 ]
 
 [[package]]

@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 efs_syntax.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 efs_codegen.workspace = true

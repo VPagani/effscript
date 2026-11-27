@@ -72,9 +72,7 @@ impl Config {
         if let Some(rules) = v["lint"]["disabled"].as_array() {
             c.lint_disabled = rules.iter().filter_map(|r| r.as_str().map(String::from)).collect();
         }
-        if let Some(s) = v["fmt"]["semicolons"].as_bool() {
-            c.fmt_semicolons = s;
-        }
+        c.fmt_semicolons = efs_fmt::FormatOptions::from_config(&v).semicolons;
         c
     }
 

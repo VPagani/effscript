@@ -102,3 +102,22 @@ fn no_asi_hazard_without_semicolons() {
     let opts = efs_codegen::Options::default();
     assert_eq!(efs_codegen::compile(src, &opts).code, efs_codegen::compile(&out, &opts).code);
 }
+
+#[test]
+fn project_options_come_from_the_nearest_efs_json() {
+    let root = std::env::temp_dir().join(format!("efs-fmt-config-{}", std::process::id()));
+    let nested = root.join("src/deep");
+    std::fs::create_dir_all(&nested).unwrap();
+    std::fs::write(root.join("efs.json"), r#"{ "fmt": { "semicolons": false } }"#).unwrap();
+    let file = nested.join("a.efs");
+    std::fs::write(&file, "").unwrap();
+    assert!(!FormatOptions::from_project(&file).semicolons);
+    assert!(!FormatOptions::from_project(&nested).semicolons);
+    // A closer efs.json wins, even without a `fmt` section.
+    std::fs::write(root.join("src/efs.json"), "{}").unwrap();
+    assert!(FormatOptions::from_project(&file).semicolons);
+    // Invalid JSON falls back to the defaults.
+    std::fs::write(root.join("src/efs.json"), "{").unwrap();
+    assert!(FormatOptions::from_project(&file).semicolons);
+    std::fs::remove_dir_all(&root).unwrap();
+}

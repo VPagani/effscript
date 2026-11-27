@@ -20,6 +20,31 @@ impl Default for FormatOptions {
     }
 }
 
+impl FormatOptions {
+    /// Reads the options from a parsed `efs.json` (`fmt.semicolons`); anything missing keeps its default.
+    pub fn from_config(config: &serde_json::Value) -> FormatOptions {
+        let mut opts = FormatOptions::default();
+        if let Some(s) = config["fmt"]["semicolons"].as_bool() {
+            opts.semicolons = s;
+        }
+        opts
+    }
+
+    /// Reads the options from the nearest `efs.json` at or above `start` (a file or a directory).
+    /// Without one, or with one that is not valid JSON, the defaults apply.
+    pub fn from_project(start: &std::path::Path) -> FormatOptions {
+        let start = std::fs::canonicalize(start).unwrap_or_else(|_| start.to_path_buf());
+        let mut dir = if start.is_file() { start.parent().map(|p| p.to_path_buf()) } else { Some(start) };
+        while let Some(d) = dir {
+            if let Ok(text) = std::fs::read_to_string(d.join("efs.json")) {
+                return serde_json::from_str(&text).map(|v| Self::from_config(&v)).unwrap_or_default();
+            }
+            dir = d.parent().map(|p| p.to_path_buf());
+        }
+        FormatOptions::default()
+    }
+}
+
 /// Formats EffScript source with the default options. Files with syntax errors are not formatted.
 pub fn format(src: &str) -> Result<String, Vec<Diagnostic>> {
     format_with(src, &FormatOptions::default())

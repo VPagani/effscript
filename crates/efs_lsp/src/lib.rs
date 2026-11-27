@@ -275,7 +275,7 @@ impl Server {
                 let p: DocumentFormattingParams = serde_json::from_value(req.params).map_err(|e| e.to_string())?;
                 let path = uri_to_path(&p.text_document.uri).ok_or("bad uri")?;
                 let text = self.text_of(&path).ok_or("unknown document")?;
-                let Ok(formatted) = efs_fmt::format(&text) else { return Ok(Value::Null) };
+                let Ok(formatted) = format_document(&path, &text) else { return Ok(Value::Null) };
                 if formatted == text {
                     return to_json_value(Vec::<TextEdit>::new());
                 }
@@ -602,6 +602,11 @@ fn collect_item_bindings(item: &Item, out: &mut Vec<(String, Span)>) {
     }
 }
 
+/// Formats a document with the options of the nearest `efs.json` above its path.
+fn format_document(path: &Path, text: &str) -> Result<String, Vec<efs_syntax::Diagnostic>> {
+    efs_fmt::format_with(text, &efs_fmt::FormatOptions::from_project(path))
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -627,5 +632,17 @@ mod tests {
         assert_eq!(def.start as usize, local.find("repo").unwrap());
         let def = super::definition(local, local.rfind("(id)").unwrap() as u32 + 1).unwrap();
         assert_eq!(def.start as usize, local.find("id").unwrap());
+    }
+
+    #[test]
+    fn formatting_follows_efs_json() {
+        let root = std::env::temp_dir().join(format!("efs-lsp-fmt-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        let file = root.join("src/a.efs");
+        let src = "const x = 1\n";
+        assert_eq!(super::format_document(&file, src).unwrap(), "const x = 1;\n");
+        std::fs::write(root.join("efs.json"), r#"{ "fmt": { "semicolons": false } }"#).unwrap();
+        assert_eq!(super::format_document(&file, "const x = 1;\n").unwrap(), src);
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }
