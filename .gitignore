@@ -1,0 +1,7 @@
+target/
+node_modules/
+*.log
+
+# efs build output in the examples
+examples/src/*.ts
+examples/src/*.ts.map
