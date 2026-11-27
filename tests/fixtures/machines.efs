@@ -1,0 +1,75 @@
+// A larger statechart: nested, final and parallel states, streams and input.
+import { Effect, Stream, Schema } from "effect"
+import { Machine } from "@typeonce/effect-machine"
+
+export machine Checkout {
+  input Number
+  root { attempts: Number = input }
+  events {
+    Start
+    Submit { card: String }
+    Paid
+    Fail { reason: String }
+    Cancel
+  }
+  effects {
+    charge = (card: string) => Effect.succeed(card.length)
+  }
+  streams {
+    ticks = Stream.make(1, 2, 3)
+  }
+
+  initial Cart
+
+  state Cart {
+    on Start -> Payment
+    on Cancel -> Cancelled
+  }
+
+  state Payment {
+    initial Entering
+
+    state Entering {
+      on Submit if event.card.length > 0 -> Charging { card: event.card }
+    }
+    state Charging(card: String) {
+      invoke charge(state.card) {
+        done -> Done
+      }
+      invoke ticks {
+        element -> stay
+        done -> stay
+      }
+      on Fail update root { attempts: root.attempts + 1 }
+    }
+    on Cancel -> Cancelled
+  }
+
+  final state Done
+  final state Cancelled
+}
+
+export machine Player parallel {
+  events {
+    Toggle
+    Mute
+  }
+  state Playback {
+    initial Paused
+    state Paused {
+      on Toggle -> Playing
+    }
+    state Playing {
+      on Toggle -> Paused
+    }
+  }
+  state Volume {
+    initial Audible
+    state Audible {
+      on Mute -> Muted
+    }
+    state Muted {
+      on Mute -> Audible
+    }
+  }
+}

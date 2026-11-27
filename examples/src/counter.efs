@@ -1,0 +1,44 @@
+// An @effect/ui component with markup.
+import { Schema } from "effect"
+import { Html } from "@effect/ui/html"
+import { UiSchema } from "@effect/ui"
+
+export component Counter {
+  prop label: String
+  let count: Number = 0
+  let history: Number[] = []
+  event Reset
+
+  update ClickedIncrement(amount: Number) {
+    count += amount
+    history = [...history, count]
+  }
+
+  update ClickedReset {
+    count = 0
+    emit Reset()
+  }
+
+  view =>
+    <div class="counter">
+      <h2>{label}</h2>
+      <p class={["count", count > 9 && "big"]}>Count: {String(count)}</p>
+      <button type="button" on:click={ClickedIncrement({ amount: 1 })}>Add one</button>
+      <button type="button" disabled={count == 0} on:click={ClickedReset}>Reset</button>
+      <small>History: {history.join(", ")}</small>
+    </div>
+}
+
+export component Dashboard {
+  let resets: Number = 0
+
+  update ResetLikes {
+    resets += 1
+  }
+
+  view =>
+    <main>
+      <Counter label="Likes" on:Reset={ResetLikes} />
+      <p>Reset {String(resets)} times</p>
+    </main>
+}

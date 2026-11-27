@@ -1,0 +1,50 @@
+// A statechart with @typeonce/effect-machine.
+import { Effect, Schema } from "effect"
+import { Machine } from "@typeonce/effect-machine"
+
+function searchItems(query: string): Effect<string[]> =
+  Effect.succeed([query, `${query}!`])
+
+export machine Search {
+  events {
+    Search { query: String }
+    Reset
+  }
+  effects {
+    load = (query: string) => searchItems(query)
+  }
+
+  initial Idle
+
+  state Idle {
+    on Search if event.query.length > 0 -> Loading { query: event.query }
+  }
+  state Loading(query: String) {
+    on Reset -> Idle
+    invoke load(state.query) {
+      done -> Ready { items: output }
+    }
+    after "5 seconds" -> Failed { message: "timed out" }
+  }
+  state Ready(items: String[]) {
+    on Reset -> Idle
+  }
+  state Failed(message: String) {
+    on Reset -> Idle
+  }
+}
+
+export machine Counter {
+  root { count: Number = 0 }
+  events {
+    Increment { by: Number }
+    Decrement
+  }
+  on Increment update root { count: root.count + event.by }
+  on Decrement update root { count: root.count - 1 }
+}
+
+export const startCounter = effect {
+  const ref = run Machine.start(Counter)
+  run ref.send(CounterEvents.Increment({ by: 2 }))
+} |> Effect.scoped

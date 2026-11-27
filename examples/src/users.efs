@@ -1,0 +1,62 @@
+// Services, layers and effectful functions.
+import { Effect, Layer, Console, Schedule, Stream } from "effect"
+import { User, UserId, UserNotFound, Unauthorized } from "./domain.efs"
+
+export service UserRepo {
+  find(id: UserId): Effect<User, UserNotFound>
+  all: Effect<readonly User[]>
+}
+
+export service Session {
+  current: Effect<UserId, Unauthorized>
+}
+
+export layer UserRepoLive for UserRepo {
+  const users = new Map<UserId, User>()
+  run Console.log("UserRepo ready")
+  return {
+    effect find(id: UserId) {
+      const user = users.get(id)
+      if user == undefined {
+        fail new UserNotFound({ id })
+      }
+      return user
+    },
+    all: Effect.sync(() => [...users.values()]),
+  }
+}
+
+export layer SessionTest for Session = {
+  current: Effect.succeed(UserId.make("u-1")),
+}
+
+export effect function currentUser() {
+  const session = run Session
+  const repo = run UserRepo
+  const id = run session.current
+  const user = run repo.find(id)
+    |> Effect.retry(Schedule.recurs(2))
+    |> Effect.timeout("1 second")
+  run Effect.log(`loaded ${user.name}`)
+  return user
+}
+
+export const greeting = currentUser()
+  |> Effect.map((user) => `Hello, ${user.name}!`)
+  catch {
+    UserNotFound(e) => Effect.succeed(`nobody called ${e.id}`)
+    Unauthorized => Effect.succeed("please sign in")
+  }
+
+export const AppLive = Layer.mergeAll(UserRepoLive, SessionTest)
+
+export const main = greeting with AppLive
+
+export const program = effect {
+  const message = run main
+  run Console.log(message)
+  defer Console.log("done")
+  for run n of Stream.make(1, 2, 3) |> Stream.map((n) => n * 2) {
+    run Console.log(n)
+  }
+}

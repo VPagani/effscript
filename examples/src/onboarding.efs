@@ -1,0 +1,21 @@
+// EffScript using a service, an error and a layer written in plain TypeScript.
+import { Effect } from "effect"
+import { Mailer, MailerConsole, welcomeText } from "./legacy/mailer.js"
+import { currentUser, AppLive } from "./users.efs"
+
+export effect function onboard() {
+  const user = run currentUser()
+  const mailer = run Mailer
+  run mailer.send(user.email ?? "nobody", welcomeText(user.name))
+  return user.id
+}
+
+export const onboarding = onboard()
+  catch {
+    MailError(e) => Effect.logWarning(e.reason) |> Effect.as("not sent")
+    UserNotFound => Effect.succeed("no user")
+    Unauthorized => Effect.succeed("signed out")
+    TimeoutError => Effect.succeed("timed out")
+  }
+  with MailerConsole
+  with AppLive

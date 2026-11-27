@@ -1,0 +1,74 @@
+// Effect UI components and markup.
+import { Effect, Schema } from "effect"
+import { Html } from "@effect/ui/html"
+import { Command } from "@effect/ui"
+
+export component Toggle {
+  prop label: String
+  prop initial?: Boolean
+  let on: Boolean = initial ?? false
+  event Toggled(on: Boolean)
+  event TurnedOn
+
+  update ClickedToggle {
+    on = !on
+    emit Toggled({ on })
+    if on {
+      emit TurnedOn()
+    }
+  }
+
+  view =>
+    <button
+      type="button"
+      aria-pressed={on ? "true" : "false"}
+      on:click={ClickedToggle}
+    >
+      {label}
+    </button>
+}
+
+const Search = Command.make("Search", { args: { query: Schema.String } }, ({ query }) =>
+  Effect.succeed(SearchBoxMessage.ReceivedResults({ found: [query, `${query}!`] })))
+
+export component SearchBox {
+  let query: String = ""
+  let results: String[] = []
+  let strict: Boolean = false
+  let searches: Number = 0
+
+  update UpdatedQuery(value: String) {
+    query = value
+    if value.length > 2 {
+      searches++
+    }
+  }
+
+  update PressedKey(key: String) => key == "Escape" ? $.evolve({ query: "" }) : $.model
+
+  update ToggledStrict(enabled: Boolean) {
+    strict = enabled
+  }
+
+  update SubmittedSearch {
+    run Search.make({ query })
+  }
+
+  update ReceivedResults(found: String[]) {
+    results = found
+  }
+
+  view =>
+    <section class={["search", query.length > 0 && "active"]}>
+      <form on:submit={SubmittedSearch}>
+        <input
+          value={query}
+          on:input={({ value }) => UpdatedQuery({ value })}
+          on:keydown|preventDefault={({ key }) => key == "Escape" ? PressedKey({ key }) : undefined}
+        />
+      </form>
+      <ul>{results.map((r) => <li>{r}</li>)}</ul>
+      <Toggle key="strict" label="Strict" on:Toggled={(e) => ToggledStrict({ enabled: e.on })} />
+      <p>Found {String(results.length)} results for "{query}" after {String(searches)} searches.</p>
+    </section>
+}
