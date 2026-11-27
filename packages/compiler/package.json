@@ -1,14 +1,33 @@
 {
   "name": "@effscript/compiler",
   "version": "0.1.0",
-  "description": "The EffScript compiler as WebAssembly: compile .efs files to JavaScript or TypeScript from Node.js, Bun or Deno",
+  "description": "The EffScript compiler as WebAssembly: compile, format and lint .efs files from Node.js, Bun, Deno or the browser",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/VPagani/effscript", "directory": "packages/compiler" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VPagani/effscript",
+    "directory": "packages/compiler"
+  },
   "type": "module",
   "exports": {
-    ".": { "types": "./index.d.ts", "default": "./index.js" }
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./browser": {
+      "types": "./browser.d.ts",
+      "default": "./browser.js"
+    },
+    "./efs.wasm": "./efs.wasm"
   },
-  "files": ["index.js", "index.d.ts", "efs.wasm"],
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "browser.js",
+    "browser.d.ts",
+    "core.js",
+    "efs.wasm"
+  ],
   "scripts": {
     "prepack": "node ../../scripts/build-wasm.mjs"
   }

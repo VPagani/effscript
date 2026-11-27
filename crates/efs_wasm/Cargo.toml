@@ -14,4 +14,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 efs_codegen.workspace = true
 efs_syntax.workspace = true
+efs_fmt.workspace = true
+efs_lint.workspace = true
 serde_json.workspace = true

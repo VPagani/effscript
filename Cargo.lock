@@ -264,6 +264,8 @@ name = "efs_wasm"
 version = "0.1.0"
 dependencies = [
  "efs_codegen",
+ "efs_fmt",
+ "efs_lint",
  "efs_syntax",
  "serde_json",
 ]

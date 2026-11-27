@@ -61,3 +61,29 @@ const { code, map, diagnostics } = compile(source, { filename: "app.efs", target
 
 `transform(source, file)` is what the plugins use: JavaScript output that
 keeps `.efs` in imports, throwing `EffScriptError` when there are errors.
+
+The package also formats and lints:
+
+```js
+import { format, lint } from "@effscript/compiler"
+
+format(source).code // null when the source does not parse
+lint(source, { disabled: ["prefer-const"] }).diagnostics
+```
+
+Each diagnostic has a one-based `line` and `column`, UTF-8 byte offsets
+`start` and `end`, and UTF-16 offsets `from` and `to` for JavaScript strings.
+`formatDiagnostic(file, d)` prints one as `file:line:column: severity: message [code]`.
+
+### In the browser
+
+`@effscript/compiler/browser` loads the same compiler with `fetch`, so it runs
+in a web page; bundlers copy `efs.wasm` next to it. The
+[website's playground](../website/src/lib/compiler.efs) uses it:
+
+```js
+import { init } from "@effscript/compiler/browser"
+
+const efs = await init()
+const { code } = efs.compile(source, { target: "js" })
+```

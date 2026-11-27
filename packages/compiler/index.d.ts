@@ -11,6 +11,16 @@ export interface CompileOptions {
   sourceMap?: boolean
 }
 
+export interface FormatOptions {
+  /** Print `;` after statements. Default `true`. */
+  semicolons?: boolean
+}
+
+export interface LintOptions {
+  /** Rules to skip, such as `"prefer-const"`. */
+  disabled?: string[]
+}
+
 export interface Diagnostic {
   message: string
   /** A stable identifier such as `syntax` or `codegen`. */
@@ -23,6 +33,9 @@ export interface Diagnostic {
   line: number
   /** One-based, in UTF-16 code units. */
   column: number
+  /** UTF-16 offsets in the source, for JavaScript strings. */
+  from: number
+  to: number
 }
 
 export interface CompileResult {
@@ -32,7 +45,25 @@ export interface CompileResult {
   diagnostics: Diagnostic[]
 }
 
+export interface FormatResult {
+  /** The formatted source, or `null` when it does not parse. */
+  code: string | null
+  diagnostics: Diagnostic[]
+}
+
+export interface LintResult {
+  diagnostics: Diagnostic[]
+}
+
+export interface Compiler {
+  compile(source: string, options?: CompileOptions): CompileResult
+  format(source: string, options?: FormatOptions): FormatResult
+  lint(source: string, options?: LintOptions): LintResult
+}
+
 export declare function compile(source: string, options?: CompileOptions): CompileResult
+export declare function format(source: string, options?: FormatOptions): FormatResult
+export declare function lint(source: string, options?: LintOptions): LintResult
 
 export interface TransformResult {
   code: string
@@ -51,5 +82,6 @@ export declare class EffScriptError extends Error {
   constructor(file: string, diagnostics: Diagnostic[])
 }
 
-export declare function format(file: string, diagnostic: Diagnostic): string
+/** `file:line:column: severity: message [code]` */
+export declare function formatDiagnostic(file: string, diagnostic: Diagnostic): string
 export declare function withInlineMap(code: string, map: string | null): string

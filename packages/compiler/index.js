@@ -1,65 +1,31 @@
-// The EffScript compiler, running as WebAssembly.
+// The EffScript compiler, running as WebAssembly in Node.js, Bun or Deno.
 import { readFileSync } from "node:fs"
+import { compiler, EffScriptError, formatDiagnostic } from "./core.js"
+
+export { EffScriptError, formatDiagnostic }
 
 /** @type {any} */
 let wasm
 
-function instance() {
+const efs = compiler(() => {
   if (!wasm) {
     const bytes = readFileSync(new URL("./efs.wasm", import.meta.url))
     wasm = new WebAssembly.Instance(new WebAssembly.Module(bytes), {}).exports
   }
   return wasm
-}
+})
 
-const encoder = new TextEncoder()
-const decoder = new TextDecoder()
+/** Compiles EffScript source. */
+export const compile = efs.compile
 
-function write(w, text) {
-  const bytes = encoder.encode(text)
-  const ptr = w.efs_alloc(bytes.length)
-  new Uint8Array(w.memory.buffer, ptr, bytes.length).set(bytes)
-  return [ptr, bytes.length]
-}
+/** Formats EffScript source; `code` is `null` when it does not parse. */
+export const format = efs.format
 
-/**
- * Compiles EffScript source.
- * @param {string} source
- * @param {import("./index.d.ts").CompileOptions} [options]
- * @returns {import("./index.d.ts").CompileResult}
- */
-export function compile(source, options = {}) {
-  const w = instance()
-  const [src, srcLen] = write(w, source)
-  const [opts, optsLen] = write(w, JSON.stringify(options))
-  const packed = BigInt.asUintN(64, w.efs_compile(src, srcLen, opts, optsLen))
-  const ptr = Number(packed >> 32n)
-  const len = Number(packed & 0xffffffffn)
-  const json = decoder.decode(new Uint8Array(w.memory.buffer, ptr, len).slice())
-  w.efs_free(ptr, len)
-  w.efs_free(src, srcLen)
-  w.efs_free(opts, optsLen)
-  return JSON.parse(json)
-}
+/** Runs the lint rules. */
+export const lint = efs.lint
 
 /** Matches the files bundler plugins handle. */
 export const filter = /\.efs$/
-
-/** A compile error, with the diagnostics that caused it. */
-export class EffScriptError extends Error {
-  /** @param {string} file @param {import("./index.d.ts").Diagnostic[]} diagnostics */
-  constructor(file, diagnostics) {
-    super(diagnostics.map((d) => format(file, d)).join("\n"))
-    this.name = "EffScriptError"
-    this.file = file
-    this.diagnostics = diagnostics
-  }
-}
-
-/** `file:line:column: message [code]` */
-export function format(file, d) {
-  return `${file}:${d.line}:${d.column}: ${d.severity}: ${d.message} [${d.code}]`
-}
 
 /**
  * Compiles a file for a bundler: JavaScript with a source map, keeping `.efs` in imports so
@@ -75,7 +41,9 @@ export function transform(source, file, options = {}) {
   return {
     code: result.code,
     map: result.map ?? null,
-    warnings: result.diagnostics.filter((d) => d.severity !== "error").map((d) => ({ ...d, formatted: format(file, d) })),
+    warnings: result.diagnostics
+      .filter((d) => d.severity !== "error")
+      .map((d) => ({ ...d, formatted: formatDiagnostic(file, d) })),
   }
 }
 
