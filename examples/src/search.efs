@@ -1,9 +1,9 @@
 // A statechart with @typeonce/effect-machine.
-import { Effect, Schema } from "effect"
-import { Machine } from "@typeonce/effect-machine"
+import { Effect, Schema } from "effect";
+import { Machine } from "@typeonce/effect-machine";
 
 function searchItems(query: string): Effect<string[]> =
-  Effect.succeed([query, `${query}!`])
+  Effect.succeed([query, `${query}!`]);
 
 export machine Search {
   events {
@@ -15,20 +15,20 @@ export machine Search {
   }
 
   initial state Idle {
-    on Search if event.query.length > 0 -> Loading { query: event.query }
+    on Search if event.query.length > 0 -> Loading { query: event.query };
   }
   state Loading(query: String) {
-    on Reset -> Idle
+    on Reset -> Idle;
     invoke load(state.query) {
-      done -> Ready { items: output }
+      done -> Ready { items: output };
     }
-    after "5 seconds" -> Failed { message: "timed out" }
+    after "5 seconds" -> Failed { message: "timed out" };
   }
   state Ready(items: String[]) {
-    on Reset -> Idle
+    on Reset -> Idle;
   }
   state Failed(message: String) {
-    on Reset -> Idle
+    on Reset -> Idle;
   }
 }
 
@@ -38,11 +38,11 @@ export machine Counter {
     Increment { by: Number }
     Decrement
   }
-  on Increment update root { count: root.count + event.by }
-  on Decrement update root { count: root.count - 1 }
+  on Increment update root { count: root.count + event.by };
+  on Decrement update root { count: root.count - 1 };
 }
 
 export const startCounter = effect {
-  const ref = run Machine.start(Counter)
-  run ref.send(CounterEvents.Increment({ by: 2 }))
-} |> Effect.scoped
+  const ref = run Machine.start(Counter);
+  run ref.send(CounterEvents.Increment({ by: 2 }));
+} |> Effect.scoped;

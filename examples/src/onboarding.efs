@@ -1,13 +1,13 @@
 // EffScript using a service, an error and a layer written in plain TypeScript.
-import { Effect, Layer } from "effect"
-import { Mailer, MailerConsole, welcomeText } from "./legacy/mailer.js"
-import { currentUser, AppLive } from "./users.efs"
+import { Effect, Layer } from "effect";
+import { Mailer, MailerConsole, welcomeText } from "./legacy/mailer.js";
+import { currentUser, AppLive } from "./users.efs";
 
 export effect function onboard() {
-  const user = run currentUser()
-  const mailer = use Mailer
-  run mailer.send(user.email ?? "nobody", welcomeText(user.name))
-  return user.id
+  const user = run currentUser();
+  const mailer = use Mailer;
+  run mailer.send(user.email ?? "nobody", welcomeText(user.name));
+  return user.id;
 }
 
 export const onboarding = onboard()
@@ -17,4 +17,4 @@ export const onboarding = onboard()
     Unauthorized => Effect.succeed("signed out")
     TimeoutError => Effect.succeed("timed out")
   }
-  with Layer.mergeAll(MailerConsole, AppLive)
+  with Layer.mergeAll(MailerConsole, AppLive);

@@ -37,23 +37,23 @@ const TSCONFIG: &str = r#"{
 }
 "#;
 
-const MAIN: &str = r#"import { Effect, Console } from "effect"
+const MAIN: &str = r#"import { Effect, Console } from "effect";
 
 error EmptyName
 
 effect function greet(name: string) {
   if name.length == 0 {
-    fail new EmptyName()
+    fail new EmptyName();
   }
-  run Console.log(`Hello, ${name}!`)
+  run Console.log(`Hello, ${name}!`);
 }
 
 export const main = greet("Effect")
   catch {
     EmptyName => Console.log("Who are you?")
-  }
+  };
 
-Effect.runPromise(main)
+Effect.runPromise(main);
 "#;
 
 const EFS_JSON: &str = r#"{
@@ -86,4 +86,12 @@ pub fn init(dir: &Path) -> Result<(), String> {
         std::fs::write(dir.join(path), content).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn template_sources_are_formatted() {
+        assert_eq!(efs_fmt::format(super::MAIN).unwrap(), super::MAIN);
+    }
 }

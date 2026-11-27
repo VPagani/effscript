@@ -1,22 +1,22 @@
 // An @effect/ui component with markup.
-import { Schema } from "effect"
-import { Html } from "@effect/ui/html"
-import { UiSchema } from "@effect/ui"
+import { Schema } from "effect";
+import { Html } from "@effect/ui/html";
+import { UiSchema } from "@effect/ui";
 
 export component Counter {
-  prop label: String
-  let count: Number = 0
-  let history: Number[] = []
-  event Reset
+  prop label: String;
+  let count: Number = 0;
+  let history: Number[] = [];
+  event Reset;
 
   update ClickedIncrement(amount: Number) {
-    count += amount
-    history = [...history, count]
+    count += amount;
+    history = [...history, count];
   }
 
   update ClickedReset {
-    count = 0
-    emit Reset()
+    count = 0;
+    emit Reset();
   }
 
   view =>
@@ -30,10 +30,10 @@ export component Counter {
 }
 
 export component Dashboard {
-  let resets: Number = 0
+  let resets: Number = 0;
 
   update ResetLikes {
-    resets += 1
+    resets += 1;
   }
 
   view =>

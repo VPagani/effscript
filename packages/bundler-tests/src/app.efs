@@ -1,23 +1,23 @@
-import { Console, Effect } from "effect"
-import { greeting } from "./greeting.efs"
+import { Console, Effect } from "effect";
+import { greeting } from "./greeting.efs";
 
 error Empty
 
 service Audience {
-  names: readonly string[]
+  names: readonly string[];
 }
 
 layer AudienceLive for Audience = {
   names: ["bundlers", "plugins"],
-}
+};
 
 export effect function greet() {
-  const audience = use Audience
-  const names = audience.names
+  const audience = use Audience;
+  const names = audience.names;
   if names.length == 0 {
-    fail new Empty()
+    fail new Empty();
   }
-  run Console.log(greeting(names.join(" and "), names.length))
+  run Console.log(greeting(names.join(" and "), names.length));
 }
 
-export const program = greet() with AudienceLive
+export const program = greet() with AudienceLive;

@@ -1,7 +1,7 @@
 // Domain model: schemas, branded ids, tagged errors and data enums.
-import { Schema, Data } from "effect"
+import { Schema, Data } from "effect";
 
-export schema UserId = String & Brand<"UserId">
+export schema UserId = String & Brand<"UserId">;
 
 export schema User {
   id: UserId
@@ -24,7 +24,7 @@ export tagged schema Withdrew {
   amount: Number
 }
 
-export schema LedgerEntry = Deposited | Withdrew
+export schema LedgerEntry = Deposited | Withdrew;
 
 export error UserNotFound { id: UserId }
 export error InsufficientFunds { needed: number, available: number }
@@ -41,10 +41,10 @@ export function area(shape: Shape): number =
     Circle({ radius }) => Math.PI * radius ** 2
     Square({ side }) => side * side
     Point => 0
-  }
+  };
 
 export function describe(entry: LedgerEntry): string =
   match entry {
     Deposited(d) => `+${d.amount}`
     Withdrew(w) => `-${w.amount}`
-  }
+  };

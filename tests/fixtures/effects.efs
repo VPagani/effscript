@@ -1,45 +1,45 @@
 // Effect-specific syntax.
-import { Effect, Layer, Schedule, Stream, Console, Data } from "effect"
+import { Effect, Layer, Schedule, Stream, Console, Data } from "effect";
 
 export error NotFound { id: string }
 export error Timeout
 
 service Clock("app/Clock") {
-  now: Effect<number>
-  readonly sleep: (ms: number) => Effect<void>
+  now: Effect<number>;
+  readonly sleep: (ms: number) => Effect<void>;
 }
 
 service Cache {
-  get(key: string): Effect<string, NotFound>
-  set(key: string, value: string): Effect<void>
+  get(key: string): Effect<string, NotFound>;
+  set(key: string, value: string): Effect<void>;
 }
 
 layer ClockLive for Clock = {
   now: Effect.sync(() => Date.now()),
   sleep: (ms) => Effect.sleep(ms),
-}
+};
 
 layer CacheLive for Cache {
-  const store = new Map<string, string>()
-  const _clock = use Clock
-  defer Console.log("cache closed")
+  const store = new Map<string, string>();
+  const _clock = use Clock;
+  defer Console.log("cache closed");
   return {
     effect get(key: string) {
-      const value = store.get(key)
+      const value = store.get(key);
       if value == undefined {
-        fail new NotFound({ id: key })
+        fail new NotFound({ id: key });
       }
-      return value
+      return value;
     },
     set: (key, value) => Effect.sync(() => {
-      store.set(key, value)
+      store.set(key, value);
     }),
-  }
+  };
 }
 
 export effect function lookup(key: string): Effect<string, NotFound, Cache> {
-  const cache = use Cache
-  return run cache.get(key)
+  const cache = use Cache;
+  return run cache.get(key);
 }
 
 export const resilient = lookup("a")
@@ -48,52 +48,52 @@ export const resilient = lookup("a")
   catch {
     NotFound(e) => Effect.succeed(`missing ${e.id}`)
     TimeoutError => Effect.succeed("slow")
-  }
+  };
 
-export const recovered = lookup("b") catch e => Effect.succeed(String(e))
+export const recovered = lookup("b") catch e => Effect.succeed(String(e));
 
 export const anonymous = effect (n: number) => {
-  run Effect.log(n)
-  return n * 2
-}
+  run Effect.log(n);
+  return n * 2;
+};
 
 export const total = effect {
-  const a = run Effect.succeed(1)
-  const b = (run Effect.succeed(2)) + a
+  const a = run Effect.succeed(1);
+  const b = (run Effect.succeed(2)) + a;
   for run n of Stream.range(1, 3) {
-    run Console.log(n + b)
+    run Console.log(n + b);
   }
-  return a + b
-}
+  return a + b;
+};
 
 export const provided = lookup("c")
-  with Layer.provide(CacheLive, ClockLive)
+  with Layer.provide(CacheLive, ClockLive);
 
-Effect.runFork(total)
+Effect.runFork(total);
 
 export const traced = effect function (n: number) {
-  return run Effect.succeed(n)
-}
+  return run Effect.succeed(n);
+};
 
-export const doubled = effect (n: number) => run Effect.succeed(n * 2)
+export const doubled = effect (n: number) => run Effect.succeed(n * 2);
 
 // Outside effect bodies `run` is an ordinary name.
-function run(task: string): string = `ran ${task}`
+function run(task: string): string = `ran ${task}`;
 
-export const ran = run("build")
+export const ran = run("build");
 
 // `use` is a keyword only before a name, so it can be an ordinary name too.
-function use(n: number): number = n + 1
+function use(n: number): number = n + 1;
 
 export const usedTwice = effect {
-  return use(use(1))
-}
+  return use(use(1));
+};
 
 export const sumBoth = effect {
-  const a = run doubled(1)
-  const b = (run traced(2)) + a
+  const a = run doubled(1);
+  const b = (run traced(2)) + a;
   for run tick of Stream.make(a, b) {
-    run Console.log(tick)
+    run Console.log(tick);
   }
-  return b
-}
+  return b;
+};
