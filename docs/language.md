@@ -108,6 +108,7 @@ export const transfer = Effect.fn("transfer")(function* (from: AccountId, to: Ac
 | `effect function name(params) { ... }` | `const name = Effect.fn("name")(function* (params) { ... })` |
 | `effect function name(params): Effect<A, E, R> { }` | the same, with the function type annotated |
 | `effect function (params) { ... }`, `effect (params) => ...` | `Effect.fnUntraced(function* (params) { ... })` |
+| `effect m(params) { }` in an object | `m: Effect.fn("m")(function* (params) { })`; `"S.m"` in a service implementation (see [trace names](#trace-names)) |
 | `effect { ... }` | `Effect.gen(function* () { ... })` |
 | `const x = run e` | `const x = yield* e` |
 | `const s = use Service`, `use Http.Client` | `const s = yield* Service`, `yield* Http.Client` |
@@ -234,7 +235,26 @@ layer UserRepoTest for UserRepo = {
 | method members `m(a: A): R` | `readonly m: (a: A) => R` |
 | `layer L for S { effect body }` | `const L = Layer.effect(S, Effect.gen(function* () { ... }))` |
 | `layer L for S = value` | `const L = Layer.succeed(S, value)` |
-| `effect m(params) { }` in an object | `m: Effect.fn("S.m")(function* (params) { })` |
+| `effect m(params) { }` in the object a layer returns | `m: Effect.fn("S.m")(function* (params) { })` |
+
+### Trace names
+
+An `effect` method in an object literal compiles to `Effect.fn("method")`.
+When the object is a service's implementation, returned by a `layer`
+declaration or written in one of these shapes, the span is named after the
+service instead, `Effect.fn("UserRepo.find")`:
+
+| Shape | The object |
+| --- | --- |
+| `Layer.effect(S, effect { ... })` | the object literals the block `return`s (not returns in nested functions) |
+| `Layer.succeed(S, { ... })` | the object literal |
+| `Layer.sync(S, () => ({ ... }))`, `Layer.sync(S, () => { ...; return { ... }; })` | the object literal the function returns |
+| `S.of({ ... })` (anywhere) | the object literal |
+
+`S` is a name or a dotted name, used as written (`UserRepo`, `Http.Client`),
+and `Layer` must be Effect's (the prelude, or imported from `"effect"`), not a
+local binding of that name. The rule is syntactic, so every tool applies it,
+including the bundler plugins.
 
 ## Errors, schemas and enums
 

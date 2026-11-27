@@ -51,8 +51,11 @@ pub(crate) struct Gen<'s> {
     /// Runtime imports to add: (imported name, local name, module).
     needed: Vec<(String, String, &'static str)>,
     pub(crate) in_gen: bool,
-    /// Prefix for the span names of `effect` methods, such as `UserRepo`.
+    /// Prefix for the span names of the `effect` methods of the object literal being lowered,
+    /// such as `UserRepo`, when it implements a service (see [`Gen::note_service_objects`]).
     pub(crate) fn_prefix: Option<String>,
+    /// Object literals that implement a service, by span, with the service's name.
+    service_objects: HashMap<Span, String>,
     /// Identifier rewrites in scope (component messages).
     pub(crate) renames: Vec<HashMap<String, String>>,
     /// The name of the markup builder in scope.
@@ -88,6 +91,7 @@ impl<'s> Gen<'s> {
             needed: Vec::new(),
             in_gen: false,
             fn_prefix: None,
+            service_objects: HashMap::new(),
             renames: Vec::new(),
             builder: "h".into(),
             comp: None,
@@ -567,11 +571,7 @@ impl<'s> Gen<'s> {
             }
             self.w.s(" = ");
             self.rtm("Effect", "fn");
-            let name = match &self.fn_prefix {
-                Some(p) => format!("{p}.{}", f.name.name),
-                None => f.name.name.clone(),
-            };
-            self.w.s(&format!("({name:?})("));
+            self.w.s(&format!("({:?})(", f.name.name));
             self.generator_fn(&f.func);
             self.w.s(")");
             return;
@@ -653,7 +653,18 @@ impl<'s> Gen<'s> {
         self.w.s("const ");
         self.w.v(l.name.span);
         self.w.s(" = ");
-        let saved = self.fn_prefix.replace(l.service.span.text(self.src).to_string());
+        // The object literals the layer returns implement the service.
+        let service = l.service.span.text(self.src).to_string();
+        let mut found = Vec::new();
+        match &l.body {
+            LayerBody::Effect(b) => returned_exprs(b, &mut found),
+            LayerBody::Value(v) => found.push(unwrap_expr(v)),
+        }
+        for x in found {
+            if matches!(x.kind, ExprKind::Object(_)) {
+                self.service_objects.insert(x.span, service.clone());
+            }
+        }
         match &l.body {
             LayerBody::Effect(b) => {
                 self.rtm("Layer", "effect");
@@ -672,7 +683,6 @@ impl<'s> Gen<'s> {
                 self.w.s(")");
             }
         }
-        self.fn_prefix = saved;
     }
 
     /// `Effect.gen(function* () { ... })`
@@ -1323,7 +1333,7 @@ impl<'s> Gen<'s> {
                 self.elems(elems);
                 self.w.s("]");
             }
-            ExprKind::Object(props) => self.object(props),
+            ExprKind::Object(props) => self.object(e.span, props),
             ExprKind::Paren(inner) => {
                 self.w.s("(");
                 self.expr_top(inner);
@@ -1368,6 +1378,9 @@ impl<'s> Gen<'s> {
                 self.expr_top(else_);
             }
             ExprKind::Call { callee, type_args, args, optional } => {
+                if !*optional {
+                    self.note_service_objects(callee, args);
+                }
                 self.expr(callee);
                 if *optional {
                     self.w.s("?.");
@@ -1491,11 +1504,77 @@ impl<'s> Gen<'s> {
         self.pop_scope();
     }
 
-    fn object(&mut self, props: &[Prop]) {
+    fn object(&mut self, span: Span, props: &[Prop]) {
         if props.is_empty() {
             self.w.s("{}");
             return;
         }
+        let prefix = self.service_objects.get(&span).cloned();
+        let saved = std::mem::replace(&mut self.fn_prefix, prefix);
+        self.object_props(props);
+        self.fn_prefix = saved;
+    }
+
+    /// Whether `name`, referenced here, is Effect's `Layer` module: the prelude name, a named
+    /// import from `"effect"` or a namespace import of `"effect/Layer"`, not shadowed by a
+    /// local binding.
+    fn is_effect_layer(&self, name: &str) -> bool {
+        if self.scopes.iter().any(|s| s.iter().any(|n| n == name)) {
+            return false;
+        }
+        if name == "Layer" && self.is_prelude(name) {
+            return true;
+        }
+        matches!(self.bindings.get(name), Some(Binding::Import { module, name: n })
+            if (module == "effect" && n == "Layer") || (module == "effect/Layer" && n == "*"))
+    }
+
+    /// Recognizes Effect's own ways of implementing a service, so that the `effect` methods of
+    /// the implementation are traced as `Service.method`:
+    ///
+    /// - `Layer.effect(S, effect { ... })`: the object literals the block returns;
+    /// - `Layer.succeed(S, { ... })`: the object literal;
+    /// - `Layer.sync(S, () => ({ ... }))`: the object literal the function returns;
+    /// - `S.of({ ... })`: the object literal.
+    ///
+    /// `S` is a name or a dotted name, and `Layer` must be Effect's `Layer` module.
+    fn note_service_objects(&mut self, callee: &Expr, args: &[ArrayElem]) {
+        let ExprKind::Member { object, name, optional: false } = &callee.kind else { return };
+        let arg = |i: usize| match args.get(i) {
+            Some(ArrayElem::Expr(x)) => Some(unwrap_expr(x)),
+            _ => None,
+        };
+        let mut found = Vec::new();
+        let service;
+        if name.name == "of" {
+            let (Some(s), [_], Some(obj)) = (object.name_path(), args, arg(0)) else { return };
+            service = s;
+            found.push(obj);
+        } else {
+            let ExprKind::Ident(layer) = &object.kind else { return };
+            if args.len() != 2 || !self.is_effect_layer(layer) {
+                return;
+            }
+            let (Some(s), Some(value)) = (arg(0).and_then(Expr::name_path), arg(1)) else { return };
+            service = s;
+            match (name.name.as_str(), &value.kind) {
+                ("succeed", _) => found.push(value),
+                ("effect", ExprKind::EffectBlock(b)) => returned_exprs(b, &mut found),
+                ("sync", ExprKind::Func(f)) if !f.effect && f.params.is_empty() => match &f.body {
+                    FuncBody::Expr(x) => found.push(unwrap_expr(x)),
+                    FuncBody::Block(b) => returned_exprs(b, &mut found),
+                },
+                _ => return,
+            }
+        }
+        for x in found {
+            if matches!(x.kind, ExprKind::Object(_)) {
+                self.service_objects.insert(x.span, service.clone());
+            }
+        }
+    }
+
+    fn object_props(&mut self, props: &[Prop]) {
         let multiline = props.iter().any(|p| matches!(p, Prop::Method { .. }))
             || props.iter().any(|p| matches!(p, Prop::KeyValue { value, .. } if matches!(value.kind, ExprKind::Func(_) | ExprKind::EffectBlock(_))));
         self.w.s("{");
@@ -2198,4 +2277,36 @@ pub(crate) fn block_decls(b: &Block) -> Vec<String> {
         }
     }
     out
+}
+
+/// `e` without parentheses, `as` and `satisfies` around it.
+fn unwrap_expr(e: &Expr) -> &Expr {
+    match &e.kind {
+        ExprKind::Paren(x) | ExprKind::As { expr: x, .. } | ExprKind::Satisfies { expr: x, .. } => unwrap_expr(x),
+        _ => e,
+    }
+}
+
+/// The values the block's `return` statements return, not counting returns inside nested
+/// functions and `effect { }` blocks (which are expressions, so they are never visited).
+fn returned_exprs<'a>(b: &'a Block, out: &mut Vec<&'a Expr>) {
+    for s in &b.stmts {
+        returned_stmt(s, out);
+    }
+}
+
+fn returned_stmt<'a>(s: &'a Stmt, out: &mut Vec<&'a Expr>) {
+    match &s.kind {
+        StmtKind::Return(Some(x)) => out.push(unwrap_expr(x)),
+        StmtKind::If(i) => {
+            returned_exprs(&i.then, out);
+            if let Some(e) = &i.else_ {
+                returned_stmt(e, out);
+            }
+        }
+        StmtKind::For { body, bind: false, .. } | StmtKind::While { body, .. } | StmtKind::Block(body) => {
+            returned_exprs(body, out)
+        }
+        _ => {}
+    }
 }
