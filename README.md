@@ -167,6 +167,11 @@ Optional `efs.json` at the project root:
 | `unreachable-state` | warning | No transition enters a machine state. |
 | `message-naming` | warning | Effect UI messages are past-tense facts (`ClickedSave`), not commands (`SetName`). |
 | `strict-equality` | hint | `==` already compiles to `===`. |
+| `multiple-with` | warning | Chained `with A with B` provides layers one at a time; provide them together. |
+| `run-effect-inside-effect` | warning | `Effect.run*` inside an effect body starts a separate program; use `run`. |
+| `missing-concurrency-option` | hint | `Effect.all` and `Effect.forEach` are sequential unless `concurrency` is set. |
+| `new-promise-in-effect` | hint | `new Promise` in an effect body; use `Effect.callback` or `Effect.tryPromise`. |
+| `global-console-in-effect`, `global-date-in-effect`, `global-fetch-in-effect`, `global-random-in-effect`, `global-timers-in-effect`, `process-env-in-effect` | hint | Globals in an effect body that have Effect services instead: `Console`, `Clock`/`DateTime`, `HttpClient`, `Random`, `Effect.sleep`/`Schedule`, `Config`. |
 
 Silence a rule for one line with `// efs-ignore: rule-name` on the line above.
 

@@ -5,7 +5,7 @@
 //! `// efs-ignore: rule-name` (or `// efs-ignore` for every rule).
 
 use efs_syntax::ast::*;
-use efs_syntax::visit::{walk_block, walk_expr};
+use efs_syntax::visit::{walk_block, walk_expr_pruned};
 use efs_syntax::{Diagnostic, Severity, Span};
 
 pub struct Rule {
@@ -55,6 +55,56 @@ pub const RULES: &[Rule] = &[
         name: "message-naming",
         severity: Severity::Warning,
         description: "Effect UI messages are facts named verb-first in the past tense (`ClickedSave`), not commands (`SetName`).",
+    },
+    Rule {
+        name: "multiple-with",
+        severity: Severity::Warning,
+        description: "Chained `with` provides layers one at a time, which can break service lifecycles; provide them together.",
+    },
+    Rule {
+        name: "run-effect-inside-effect",
+        severity: Severity::Warning,
+        description: "`Effect.run*` inside an effect body starts a separate program; use `run` instead.",
+    },
+    Rule {
+        name: "new-promise-in-effect",
+        severity: Severity::Info,
+        description: "`new Promise` inside an effect body; use `Effect.callback` or `Effect.tryPromise`.",
+    },
+    Rule {
+        name: "global-console-in-effect",
+        severity: Severity::Info,
+        description: "`console` inside an effect body; use `Console` or `Effect.log`.",
+    },
+    Rule {
+        name: "global-date-in-effect",
+        severity: Severity::Info,
+        description: "`Date.now()` or `new Date()` inside an effect body; use `Clock` or `DateTime`.",
+    },
+    Rule {
+        name: "global-fetch-in-effect",
+        severity: Severity::Info,
+        description: "`fetch` inside an effect body; use Effect's `HttpClient`.",
+    },
+    Rule {
+        name: "global-random-in-effect",
+        severity: Severity::Info,
+        description: "`Math.random()` inside an effect body; use `Random`.",
+    },
+    Rule {
+        name: "global-timers-in-effect",
+        severity: Severity::Info,
+        description: "`setTimeout` or `setInterval` inside an effect body; use `Effect.sleep` or `Schedule`.",
+    },
+    Rule {
+        name: "process-env-in-effect",
+        severity: Severity::Info,
+        description: "`process.env` inside an effect body; use `Config`.",
+    },
+    Rule {
+        name: "missing-concurrency-option",
+        severity: Severity::Info,
+        description: "`Effect.all` and `Effect.forEach` run sequentially unless `concurrency` is set; say which you want.",
     },
     Rule {
         name: "strict-equality",
@@ -160,6 +210,91 @@ fn assigned_names(target: &Expr, out: &mut Vec<String>) {
             }
         }
         _ => {}
+    }
+}
+
+/// `a.b.c` as `["a", "b", "c"]` when `e` is a plain member chain.
+fn member_path(e: &Expr) -> Option<Vec<&str>> {
+    match &e.kind {
+        ExprKind::Ident(n) => Some(vec![n.as_str()]),
+        ExprKind::Member { object, name, .. } => {
+            let mut p = member_path(object)?;
+            p.push(&name.name);
+            Some(p)
+        }
+        _ => None,
+    }
+}
+
+fn has_concurrency_option(args: &[ArrayElem]) -> bool {
+    args.iter().any(|a| match a {
+        ArrayElem::Expr(Expr { kind: ExprKind::Object(props), .. }) => props.iter().any(|p| {
+            matches!(p, Prop::KeyValue { key: PropKey::Ident(k), .. } if k.name == "concurrency")
+                || matches!(p, Prop::Shorthand(k) if k.name == "concurrency")
+                || matches!(p, Prop::Spread(_))
+        }),
+        ArrayElem::Spread(_) => true,
+        _ => false,
+    })
+}
+
+/// Checks a single expression. `in_effect` says whether it is directly inside an effect body.
+fn check_expr(x: &Expr, in_effect: bool) -> Option<(&'static str, Span, String)> {
+    let effect_native = |rule: &'static str, what: &str, instead: &str| {
+        Some((rule, x.span, format!("{what} inside an effect body; {instead}")))
+    };
+    match &x.kind {
+        ExprKind::With { expr, .. } if matches!(expr.kind, ExprKind::With { .. }) => Some((
+            "multiple-with",
+            x.span,
+            "these layers are provided one at a time; provide them together with `with Layer.mergeAll(A, B)`, or `with Layer.provideMerge(A, B)` when `A` needs `B`".into(),
+        )),
+        ExprKind::Call { callee, args, .. } => {
+            let path = member_path(callee)?;
+            match path.as_slice() {
+                ["Effect", "all" | "forEach"] if !has_concurrency_option(args) => Some((
+                    "missing-concurrency-option",
+                    callee.span,
+                    format!("`{}` runs one effect at a time unless you pass `{{ concurrency: ... }}`; say which you want", path.join(".")),
+                )),
+                ["Effect", run] if in_effect && run.starts_with("run") => Some((
+                    "run-effect-inside-effect",
+                    callee.span,
+                    format!("`Effect.{run}` inside an effect body starts a separate program; write `run ...` instead"),
+                )),
+                ["console", _] if in_effect => {
+                    effect_native("global-console-in-effect", "`console`", "use `Console` or `Effect.log`")
+                }
+                ["Date", "now"] if in_effect => {
+                    effect_native("global-date-in-effect", "`Date.now()`", "use `Clock.currentTimeMillis` or `DateTime.now`")
+                }
+                ["fetch"] if in_effect => effect_native("global-fetch-in-effect", "`fetch`", "use Effect's `HttpClient`"),
+                ["Math", "random"] if in_effect => {
+                    effect_native("global-random-in-effect", "`Math.random()`", "use `Random.next`")
+                }
+                ["setTimeout" | "setInterval"] if in_effect => {
+                    effect_native("global-timers-in-effect", &format!("`{}`", path[0]), "use `Effect.sleep` or `Schedule`")
+                }
+                _ => None,
+            }
+        }
+        ExprKind::New { callee, .. } if in_effect => match member_path(callee)?.as_slice() {
+            ["Date"] => effect_native("global-date-in-effect", "`new Date()`", "use `DateTime.now` or `Clock`"),
+            ["Promise"] => {
+                effect_native("new-promise-in-effect", "`new Promise`", "use `Effect.callback` or `Effect.tryPromise`")
+            }
+            _ => None,
+        },
+        ExprKind::Member { .. } if in_effect => match member_path(x)?.as_slice() {
+            ["process", "env"] => effect_native("process-env-in-effect", "`process.env`", "use `Config`"),
+            _ => None,
+        },
+        ExprKind::Binary { op, left, .. } if op == "===" || op == "!==" => Some((
+            "strict-equality",
+            Span::new(left.span.end, left.span.end),
+            "`==` and `!=` already compile to `===` and `!==`".into(),
+        )),
+        _ => None,
     }
 }
 
@@ -369,42 +504,36 @@ impl Linter {
         }
     }
 
-    /// Visits nested functions and effect blocks, and expression-level checks.
-    fn expr(&mut self, e: &Expr, _in_effect: bool) {
-        let mut nested: Vec<(Block, bool)> = Vec::new();
+    /// Expression-level checks, then nested functions and effect blocks with their own context.
+    fn expr(&mut self, e: &Expr, in_effect: bool) {
+        let mut nested: Vec<Block> = Vec::new();
         let mut funcs: Vec<Func> = Vec::new();
-        let mut strict: Vec<Span> = Vec::new();
-        walk_expr(e, &mut |x| match &x.kind {
-            ExprKind::EffectBlock(b) => nested.push((b.clone(), true)),
-            ExprKind::Func(f) => funcs.push((**f).clone()),
-            ExprKind::Object(props) => {
-                for p in props {
-                    if let Prop::Method { func, .. } = p {
-                        funcs.push(func.clone());
-                    }
+        let mut found: Vec<(&'static str, Span, String)> = Vec::new();
+        walk_expr_pruned(e, &mut |x| {
+            match &x.kind {
+                ExprKind::EffectBlock(b) => {
+                    nested.push(b.clone());
+                    return false;
                 }
+                ExprKind::Func(f) => {
+                    funcs.push((**f).clone());
+                    return false;
+                }
+                _ => {}
             }
-            ExprKind::Binary { op, left, .. } if op == "===" || op == "!==" => {
-                strict.push(Span::new(left.span.end, left.span.end));
+            if let Some(f) = check_expr(x, in_effect) {
+                found.push(f);
             }
-            _ => {}
+            true
         });
-        for s in strict {
-            self.report("strict-equality", s, "`==` and `!=` already compile to `===` and `!==`");
+        for (rule, span, message) in found {
+            self.report(rule, span, message);
         }
-        // Only the outermost nested bodies: deeper ones are reached by recursion.
-        let outer = |s: Span, all: &[Span]| !all.iter().any(|o| *o != s && o.start <= s.start && s.end <= o.end);
-        let mut spans: Vec<Span> = nested.iter().map(|(b, _)| b.span).collect();
-        spans.extend(funcs.iter().map(|f| f.span));
-        for (b, eff) in &nested {
-            if outer(b.span, &spans) {
-                self.block(b, *eff);
-            }
+        for b in &nested {
+            self.block(b, true);
         }
         for f in &funcs {
-            if outer(f.span, &spans) {
-                self.func(f);
-            }
+            self.func(f);
         }
     }
 
@@ -531,6 +660,36 @@ mod tests {
         assert!(codes("function f() {\n  let x = 1\n  x += 1\n  return x\n}").is_empty());
         assert!(codes("function f() {\n  let n = 0\n  for v of [1] {\n    n++\n  }\n  return n\n}").is_empty());
         assert!(codes("function f() {\n  const x = 1\n  return x\n}").is_empty());
+    }
+
+    #[test]
+    fn effect_native_rules_apply_only_directly_in_effect_bodies() {
+        let src = "const p = effect {\n  const t = Date.now()\n  const u = run Effect.sync(() => Date.now())\n  console.log(t)\n  return t + u\n}";
+        assert_eq!(codes(src), vec!["lint/global-date-in-effect", "lint/global-console-in-effect"]);
+        assert!(codes("const now = () => Date.now()").is_empty());
+    }
+
+    #[test]
+    fn run_inside_effect_and_promises() {
+        let src = "const p = effect {\n  const a = Effect.runSync(Effect.succeed(1))\n  const b = run Effect.tryPromise(() => new Promise((r) => r(1)))\n  return a + b\n}";
+        assert_eq!(codes(src), vec!["lint/run-effect-inside-effect"]);
+        let src = "const p = effect {\n  const v = new Promise((r) => r(1))\n  return v\n}";
+        assert_eq!(codes(src), vec!["lint/new-promise-in-effect"]);
+    }
+
+    #[test]
+    fn layers_and_concurrency() {
+        assert_eq!(codes("const p = main with A with B"), vec!["lint/multiple-with"]);
+        assert!(codes("const p = main with Layer.mergeAll(A, B)").is_empty());
+        assert_eq!(codes("const p = Effect.all([a, b])"), vec!["lint/missing-concurrency-option"]);
+        assert!(codes("const p = Effect.all([a, b], { concurrency: 2 })").is_empty());
+        assert!(codes("const p = Effect.forEach(xs, f, { concurrency: \"unbounded\" })").is_empty());
+    }
+
+    #[test]
+    fn findings_inside_callbacks_are_reported_once() {
+        let src = "const f = () => {\n  const g = () => a === b\n  return g\n}";
+        assert_eq!(codes(src), vec!["lint/strict-equality"]);
     }
 
     #[test]
