@@ -1,4 +1,4 @@
-import { Effect, Stream, Schema } from "effect"
+import { Schema, Effect, Stream } from "effect"
 import { Machine } from "@typeonce/effect-machine"
 
 export const CheckoutState = Machine.state({ fields: { attempts: Schema.Finite }, states: {

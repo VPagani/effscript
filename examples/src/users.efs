@@ -1,5 +1,4 @@
 // Services, layers and effectful functions.
-import { Effect, Layer, Console, Schedule, Stream } from "effect";
 import { User, UserId, UserNotFound, Unauthorized } from "./domain.efs";
 
 export service UserRepo {

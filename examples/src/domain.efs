@@ -1,5 +1,5 @@
 // Domain model: schemas, branded ids, tagged errors and data enums.
-import { Schema, Data } from "effect";
+import { Data } from "effect";
 
 export schema UserId = String & Brand<"UserId">;
 

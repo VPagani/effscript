@@ -1,5 +1,4 @@
 // An @effect/ui component with markup.
-import { Schema } from "effect";
 import { Html } from "@effect/ui/html";
 import { UiSchema } from "@effect/ui";
 

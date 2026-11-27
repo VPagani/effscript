@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Schema, Effect } from "effect"
 import { Html } from "@effect/ui/html"
 import { Command, UiSchema } from "@effect/ui"
 

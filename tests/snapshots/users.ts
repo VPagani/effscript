@@ -1,4 +1,4 @@
-import { Effect, Layer, Console, Schedule, Stream, Context, pipe } from "effect"
+import { Context, Effect, Layer, Console, pipe, Schedule, Stream } from "effect"
 import { User, UserId, UserNotFound, Unauthorized } from "./domain.js"
 
 export class UserRepo extends Context.Service<UserRepo, {

@@ -6,8 +6,6 @@ TypeScript you would write by hand, minus the incantations. If you know
 `async function` and `await`, you already know `effect function` and `run`.
 
 ```efs
-import { Effect, Schedule } from "effect";
-
 error UserNotFound { id: UserId }
 
 service UserRepo {
@@ -33,7 +31,9 @@ export const main = greet(UserId.make("u-1"))
 
 - **Plain output.** It compiles to ordinary Effect code (`Effect.fn`,
   `Context.Service`, `Data.TaggedError`, `Effect.catchTags`), as TypeScript or
-  JavaScript with source maps. There is no runtime.
+  JavaScript with source maps. There is no runtime. Core modules such as
+  `Effect`, `Schema` and `Console` need no import (the
+  [prelude](docs/language.md#prelude)); the output imports them.
 - **The whole ecosystem.** Services, layers, errors, schemas, `match`,
   streams, [effect-machine](https://github.com/typeonce-dev/effect-machine)
   state machines and [Effect UI](https://ui.effect.website/) components with

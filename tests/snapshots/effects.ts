@@ -1,4 +1,4 @@
-import { Effect, Layer, Schedule, Stream, Console, Data, Context, pipe } from "effect"
+import { Data, Context, Effect, Layer, Console, pipe, Schedule, Stream } from "effect"
 
 export class NotFound extends Data.TaggedError("NotFound")<{
   readonly id: string
@@ -94,4 +94,15 @@ export const sumBoth = Effect.gen(function* () {
   const b = (yield* traced(2)) + a
   yield* Stream.runForEach(Stream.make(a, b), (tick) => Console.log(tick))
   return b
+})
+
+export function backoff(Schedule: number): number {
+  return Schedule * 2
+}
+
+export const shadowed = Effect.gen(function* () {
+  const Console = {
+    log: (message: string) => Effect.log(message)
+  }
+  yield* Console.log("shadowed")
 })

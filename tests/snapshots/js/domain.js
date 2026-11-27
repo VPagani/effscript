@@ -1,4 +1,4 @@
-import { Schema, Data, Match } from "effect"
+import { Data, Schema, Match } from "effect"
 
 export const UserId = Schema.String.pipe(Schema.brand("UserId"))
 

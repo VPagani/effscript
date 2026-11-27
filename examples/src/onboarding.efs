@@ -1,5 +1,4 @@
 // EffScript using a service, an error and a layer written in plain TypeScript.
-import { Effect, Layer } from "effect";
 import { Mailer, MailerConsole, welcomeText } from "./legacy/mailer.js";
 import { currentUser, AppLive } from "./users.efs";
 

@@ -37,9 +37,7 @@ const TSCONFIG: &str = r#"{
 }
 "#;
 
-const MAIN: &str = r#"import { Effect, Console } from "effect";
-
-error EmptyName
+const MAIN: &str = r#"error EmptyName
 
 effect function greet(name: string) {
   if name.length == 0 {

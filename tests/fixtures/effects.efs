@@ -1,5 +1,5 @@
 // Effect-specific syntax.
-import { Effect, Layer, Schedule, Stream, Console, Data } from "effect";
+import { Data } from "effect";
 
 export error NotFound { id: string }
 export error Timeout
@@ -96,4 +96,12 @@ export const sumBoth = effect {
     run Console.log(tick);
   }
   return b;
+};
+
+// Local bindings shadow prelude names where they are in scope; `Clock` above is declared here.
+export function backoff(Schedule: number): number = Schedule * 2;
+
+export const shadowed = effect {
+  const Console = { log: (message: string) => Effect.log(message) };
+  run Console.log("shadowed");
 };

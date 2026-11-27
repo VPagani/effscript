@@ -1,5 +1,4 @@
 // A larger statechart: nested, final and parallel states, streams and input.
-import { Effect, Stream, Schema } from "effect";
 import { Machine } from "@typeonce/effect-machine";
 
 export machine Checkout {

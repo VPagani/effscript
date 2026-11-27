@@ -33,8 +33,6 @@ use `efs build --emit js`, or use a [bundler plugin](bundlers.md).
 ## A first program
 
 ```efs
-import { Console } from "effect";
-
 error EmptyName
 
 effect function greet(name: string) {
@@ -52,8 +50,10 @@ export const main = greet("Effect")
 
 `effect function` and `run` work like `async function` and `await`: `run`
 runs an effect and gives you its result. `use Service` gets a service your
-code depends on. See the [language guide](language.md)
-for everything else, and [what each construct compiles to](language.md).
+code depends on. `Console`, `Effect` and the other core Effect modules need no
+import: they come from the [prelude](language.md#prelude). See the
+[language guide](language.md) for everything else, and
+[what each construct compiles to](language.md).
 
 ## Next steps
 

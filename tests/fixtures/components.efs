@@ -1,5 +1,4 @@
 // Effect UI components and markup.
-import { Effect, Schema } from "effect";
 import { Html } from "@effect/ui/html";
 import { Command } from "@effect/ui";
 
