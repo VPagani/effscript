@@ -620,7 +620,9 @@ mod tests {
         let def = super::definition(src, src.rfind("Repo").unwrap() as u32 + 1).unwrap();
         assert_eq!(def.text(src), "Repo");
         assert_eq!(def.start, 8);
-        let local = "effect function f(id: string) {\n  const repo = run Repo\n  return repo.find(id)\n}\n";
+        let local = "service Repo { all: number }\neffect function f(id: string) {\n  const repo = use Repo\n  return repo.find(id)\n}\n";
+        let def = super::definition(local, local.rfind("Repo").unwrap() as u32 + 1).unwrap();
+        assert_eq!(def.start, 8);
         let def = super::definition(local, local.rfind("repo.find").unwrap() as u32 + 1).unwrap();
         assert_eq!(def.start as usize, local.find("repo").unwrap());
         let def = super::definition(local, local.rfind("(id)").unwrap() as u32 + 1).unwrap();

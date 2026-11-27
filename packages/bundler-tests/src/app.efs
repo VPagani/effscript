@@ -3,11 +3,21 @@ import { greeting } from "./greeting.efs"
 
 error Empty
 
-export effect function greet(names: readonly string[]) {
+service Audience {
+  names: readonly string[]
+}
+
+layer AudienceLive for Audience = {
+  names: ["bundlers", "plugins"],
+}
+
+export effect function greet() {
+  const audience = use Audience
+  const names = audience.names
   if names.length == 0 {
     fail new Empty()
   }
   run Console.log(greeting(names.join(" and "), names.length))
 }
 
-export const program = greet(["bundlers", "plugins"])
+export const program = greet() with AudienceLive

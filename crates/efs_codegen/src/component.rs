@@ -467,7 +467,7 @@ impl Gen<'_> {
         for s in &b.stmts {
             self.w.nl();
             self.w.push_node(s.span);
-            if let StmtKind::Expr(Expr { kind: ExprKind::Bind(inner), .. }) = &s.kind {
+            if let StmtKind::Expr(Expr { kind: ExprKind::Bind(BindKind::Run, inner), .. }) = &s.kind {
                 let name = format!("$command{}", commands.len() + 1);
                 self.w.s(&format!("const {name} = "));
                 self.expr_top(inner);

@@ -51,7 +51,8 @@ export const main = greet("Effect")
 ```
 
 `effect function` and `run` work like `async function` and `await`: `run`
-runs an effect and gives you its result. See the [language guide](language.md)
+runs an effect and gives you its result. `use Service` gets a service your
+code depends on. See the [language guide](language.md)
 for everything else, and [what each construct compiles to](language.md).
 
 ## Next steps

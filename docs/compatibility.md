@@ -17,11 +17,12 @@ one clear warning rather than as type errors in generated code.
 ## How EffScript keeps up
 
 **Source stays stable; output follows Effect.** EffScript syntax names
-concepts (`effect function`, `run`, `service`, `layer`, `error`, `catch`,
-`with`) rather than Effect's function names, so most Effect API changes are
-absorbed by the code generator and need no change to `.efs` files. When
-Effect renames `Context.Tag` to `Context.Service`, or `catchTags` changes
-shape, the next EffScript release generates the new form.
+concepts (`effect function`, `run`, `use`, `service`, `layer`, `error`,
+`catch`, `with`) rather than Effect's function names, so most Effect API
+changes are absorbed by the code generator and need no change to `.efs`
+files. When Effect renames `Context.Tag` to `Context.Service`, or
+`catchTags` changes shape, the next EffScript release generates the new
+form.
 
 **Minor versions.** Effect follows semver, so a new 4.x minor should keep
 working. A weekly CI job (`compat` in `.github/workflows/`) type checks the

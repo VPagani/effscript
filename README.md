@@ -15,7 +15,7 @@ service UserRepo {
 }
 
 export effect function greet(id: UserId) {
-  const repo = run UserRepo
+  const repo = use UserRepo
   const user = run repo.find(id)
     |> Effect.retry(Schedule.recurs(2))
     |> Effect.timeout("1 second")

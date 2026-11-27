@@ -35,3 +35,15 @@ fn format_is_stable_and_preserves_semantics() {
         assert_eq!(a, b, "{name}: formatting changed the compiled output\n--- formatted ---\n{once}");
     }
 }
+
+#[test]
+fn use_is_printed_before_its_name() {
+    let src = "effect function f() {\n  const repo = use   UserRepo\n  const client = use Http.Client\n  return (use  Clock).now\n}\nconst use = 1\nconst x = use + 1\n";
+    let once = efs_fmt::format(src).unwrap();
+    for line in
+        ["const repo = use UserRepo", "const client = use Http.Client", "return (use Clock).now", "const x = use + 1"]
+    {
+        assert!(once.contains(line), "missing `{line}` in\n{once}");
+    }
+    assert_eq!(efs_fmt::format(&once).unwrap(), once);
+}

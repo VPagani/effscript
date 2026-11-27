@@ -21,7 +21,7 @@ layer ClockLive for Clock = {
 
 layer CacheLive for Cache {
   const store = new Map<string, string>()
-  const _clock = run Clock
+  const _clock = use Clock
   defer Console.log("cache closed")
   return {
     effect get(key: string) {
@@ -38,7 +38,7 @@ layer CacheLive for Cache {
 }
 
 export effect function lookup(key: string): Effect<string, NotFound, Cache> {
-  const cache = run Cache
+  const cache = use Cache
   return run cache.get(key)
 }
 
@@ -81,6 +81,13 @@ export const doubled = effect (n: number) => run Effect.succeed(n * 2)
 function run(task: string): string = `ran ${task}`
 
 export const ran = run("build")
+
+// `use` is a keyword only before a name, so it can be an ordinary name too.
+function use(n: number): number = n + 1
+
+export const usedTwice = effect {
+  return use(use(1))
+}
 
 export const sumBoth = effect {
   const a = run doubled(1)

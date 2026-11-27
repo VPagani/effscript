@@ -56,7 +56,7 @@ pub fn walk_expr_pruned(e: &Expr, f: &mut dyn FnMut(&Expr) -> bool) {
                 }
             }
         }
-        ExprKind::Paren(x) | ExprKind::NonNull(x) | ExprKind::Bind(x) => walk_expr_pruned(x, f),
+        ExprKind::Paren(x) | ExprKind::NonNull(x) | ExprKind::Bind(_, x) => walk_expr_pruned(x, f),
         ExprKind::Unary { expr, .. } | ExprKind::Update { expr, .. } => walk_expr_pruned(expr, f),
         ExprKind::As { expr, .. } | ExprKind::Satisfies { expr, .. } => walk_expr_pruned(expr, f),
         ExprKind::Binary { left, right, .. } => {

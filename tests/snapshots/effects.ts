@@ -81,6 +81,14 @@ function run(task: string): string {
 
 export const ran = run("build")
 
+function use(n: number): number {
+  return n + 1
+}
+
+export const usedTwice = Effect.gen(function* () {
+  return use(use(1))
+})
+
 export const sumBoth = Effect.gen(function* () {
   const a = yield* doubled(1)
   const b = (yield* traced(2)) + a

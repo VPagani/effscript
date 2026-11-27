@@ -1172,8 +1172,9 @@ impl Printer<'_> {
                 }
                 self.expr(layer);
             }
-            ExprKind::Bind(x) => {
-                self.w("run ");
+            ExprKind::Bind(kind, x) => {
+                self.w(kind.keyword());
+                self.w(" ");
                 self.expr(x);
             }
             ExprKind::Catch { expr, handler } => {

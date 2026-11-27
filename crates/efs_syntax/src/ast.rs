@@ -476,6 +476,28 @@ pub struct Expr {
     pub span: Span,
 }
 
+impl Expr {
+    /// The name `a` or dotted name `a.b.c` this expression is made of, if it is one.
+    pub fn name_path(&self) -> Option<String> {
+        match &self.kind {
+            ExprKind::Ident(n) => Some(n.clone()),
+            ExprKind::Member { object, name, optional: false } => {
+                Some(format!("{}.{}", object.name_path()?, name.name))
+            }
+            _ => None,
+        }
+    }
+
+    /// The leftmost name of a name or dotted name: `a` in `a.b.c`.
+    pub fn root_name(&self) -> Option<&str> {
+        match &self.kind {
+            ExprKind::Ident(n) => Some(n),
+            ExprKind::Member { object, optional: false, .. } => object.root_name(),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExprKind {
     Ident(String),
@@ -538,8 +560,9 @@ pub enum ExprKind {
         expr: Box<Expr>,
         layer: Box<Expr>,
     },
-    /// `run effect`: runs an effect inside an effect body (`yield*`).
-    Bind(Box<Expr>),
+    /// `run effect` runs an effect and `use Service` gets a service, inside an effect body.
+    /// Both compile to `yield*`; the operand of `use` is a name or a dotted name.
+    Bind(BindKind, Box<Expr>),
     /// `effect catch { Tag(e) => handler }` or `effect catch e => handler`.
     Catch {
         expr: Box<Expr>,
@@ -567,6 +590,24 @@ pub enum ExprKind {
     },
     NonNull(Box<Expr>),
     Error,
+}
+
+/// The keyword of a [`ExprKind::Bind`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum BindKind {
+    /// `run effect`: runs an effect and gives its result.
+    Run,
+    /// `use Service`: gets a service from the context.
+    Use,
+}
+
+impl BindKind {
+    pub fn keyword(self) -> &'static str {
+        match self {
+            BindKind::Run => "run",
+            BindKind::Use => "use",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

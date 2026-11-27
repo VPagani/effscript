@@ -14,7 +14,7 @@ need (classes, `async`, decorators, `var`, `this`). Bindings work as in
 JavaScript: `const` cannot be reassigned, `let` can.
 
 - [Basics](#basics)
-- [Effects](#effects): `effect function`, `effect` arrows, `effect { }`, `run`, `fail`, `defer`, `for run`
+- [Effects](#effects): `effect function`, `effect` arrows, `effect { }`, `run`, `use`, `fail`, `defer`, `for run`
 - [Pipelines, layers and errors](#pipelines-layers-and-errors): `|>`, `with`, `catch`
 - [Matching](#matching): `match`
 - [Services and layers](#services-and-layers): `service`, `layer`
@@ -63,11 +63,11 @@ Effects work like `async`/`await`, with `effect` in place of `async` and
 
 An **effect body** is the inside of an `effect function`, an `effect` arrow
 or an `effect { }` block. There, `run` runs an effect and gives you its
-result.
+result, and `use` gets a service.
 
 ```efs
 export effect function transfer(from: AccountId, to: AccountId, amount: number) {
-  const accounts = run Accounts
+  const accounts = use Accounts
   const source = run accounts.get(from)
   if source.balance < amount {
     fail new InsufficientFunds({ needed: amount, available: source.balance })
@@ -102,6 +102,7 @@ export const transfer = Effect.fn("transfer")(function* (from: AccountId, to: Ac
 | `effect function (params) { ... }`, `effect (params) => ...` | `Effect.fnUntraced(function* (params) { ... })` |
 | `effect { ... }` | `Effect.gen(function* () { ... })` |
 | `const x = run e` | `const x = yield* e` |
+| `const s = use Service`, `use Http.Client` | `const s = yield* Service`, `yield* Http.Client` |
 | `run e` (statement), `(run e) + 1` (in an expression) | `yield* e`, `(yield* e) + 1` |
 | `fail e` | `return yield* Effect.fail(e)`; `return yield* e` when `e` is `new E(...)` of an `error` declared in the file |
 | `defer e` | `yield* Effect.addFinalizer(() => e)` |
@@ -115,8 +116,38 @@ right, the way `yield*` does, so that pipelines work:
 
 Like `await`, `run` is a keyword only inside effect bodies; elsewhere it is an
 ordinary name, so `run("build")` can call your own `run` function. `run`,
-`fail` and `defer` outside an effect body are compile errors. Plain functions
-and arrows nested inside an effect body are not effect bodies.
+`use`, `fail` and `defer` outside an effect body are compile errors. Plain
+functions and arrows nested inside an effect body are not effect bodies.
+
+### `use` and `run`
+
+`use Service` gets a **dependency**: the service that a `with` further out
+provides. `run effect` **performs work**: it runs an effect and gives you its
+result. Both compile to `yield*`, because in Effect a service key can be
+yielded, but they mean different things, and EffScript keeps them apart:
+
+```efs
+export effect function onboard(id: UserId) {
+  const repo = use UserRepo      // a dependency, provided by `with UserRepoLive`
+  const user = run repo.find(id) // work
+  return user
+}
+```
+
+- `use` takes a name or a dotted name (`use UserRepo`, `use Http.Client`);
+  anything else is a syntax error that suggests `run`.
+- `run` on a service is an error: "`UserRepo` is a service; get it with
+  `use UserRepo`". `use` on something that is not a service (an effect, a
+  layer, a function) is an error too.
+- Services are told apart by type: an Effect service key (`service`,
+  `Context.Service`, `Context.Reference`, built-ins such as `Clock.Clock`) is a
+  service, everything else is not. For names declared in the same file the
+  compiler knows what they are, so every tool reports the error, including the
+  bundler plugins. `efs check` and the language server also catch imported
+  services and effects, including ones written in plain TypeScript, by their
+  types (codes `run-service` and `use-non-service`).
+- `use` is a keyword only when a name follows it on the same line, so
+  `use(x)`, `const use = 1` and `x.use` still work.
 
 ## Pipelines, layers and errors
 
@@ -168,7 +199,7 @@ service UserRepo {
 }
 
 layer UserRepoLive for UserRepo {
-  const sql = run Sql
+  const sql = use Sql
   return {
     effect find(id: UserId) {
       const row = run sql.one(id)
@@ -191,6 +222,7 @@ layer UserRepoTest for UserRepo = {
 | --- | --- |
 | `service Name { member: T }` | `class Name extends Context.Service<Name, { readonly member: T }>()("Name") {}` |
 | `service Name("app/Name") { }` | the same with an explicit key |
+| `use Name` (in an effect body) | `yield* Name`: gets the service, see [`use` and `run`](#use-and-run) |
 | method members `m(a: A): R` | `readonly m: (a: A) => R` |
 | `layer L for S { effect body }` | `const L = Layer.effect(S, Effect.gen(function* () { ... }))` |
 | `layer L for S = value` | `const L = Layer.succeed(S, value)` |

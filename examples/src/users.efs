@@ -31,8 +31,8 @@ export layer SessionTest for Session = {
 }
 
 export effect function currentUser() {
-  const session = run Session
-  const repo = run UserRepo
+  const session = use Session
+  const repo = use UserRepo
   const id = run session.current
   const user = run repo.find(id)
     |> Effect.retry(Schedule.recurs(2))

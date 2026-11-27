@@ -533,7 +533,47 @@ impl<'a> Parser<'a> {
             );
         }
         let inner = if stop_at_with { self.expr_no_with() } else { self.expr() };
-        Expr { kind: ExprKind::Bind(Box::new(inner)), span: self.span_from(start) }
+        Expr { kind: ExprKind::Bind(BindKind::Run, Box::new(inner)), span: self.span_from(start) }
+    }
+
+    /// Whether the next token is the `use` keyword. `use` is a keyword only when a name
+    /// follows it on the same line (`use UserRepo`); otherwise it is an ordinary identifier,
+    /// so `use(x)`, `const use = 1` and `x.use` keep working.
+    fn at_use(&mut self) -> bool {
+        if !self.is("use") {
+            return false;
+        }
+        let next = self.peek_n(1);
+        next.kind == TokenKind::Ident
+            && !next.nl_before
+            && !matches!(self.text(next), "as" | "satisfies" | "in" | "instanceof" | "of" | "with" | "catch")
+    }
+
+    /// Parses `use Service` (the keyword is the next token).
+    fn use_expr(&mut self, stop_at_with: bool) -> Expr {
+        let start = self.start();
+        let kw = self.bump();
+        if self.in_update && !self.in_effect {
+            self.error(
+                kw.span,
+                "`use` gets a service inside an effect body; an update cannot get services, use `run` to issue a command",
+            );
+        } else if !self.in_effect {
+            self.error(
+                kw.span,
+                "`use` can only be used inside an `effect function`, an `effect` arrow or an `effect { }` block",
+            );
+        }
+        let inner = if stop_at_with { self.expr_no_with() } else { self.expr() };
+        if inner.name_path().is_none() && !matches!(inner.kind, ExprKind::Error) {
+            let text = inner.span.text(self.src);
+            let run = if text.len() <= 40 && !text.contains('\n') { format!("run {text}") } else { "run ...".into() };
+            self.error(
+                inner.span,
+                format!("`use` takes the name of a service, such as `use UserRepo`; to run an effect, write `{run}`"),
+            );
+        }
+        Expr { kind: ExprKind::Bind(BindKind::Use, Box::new(inner)), span: self.span_from(start) }
     }
 
     fn type_alias(&mut self) -> TypeAlias {
@@ -1225,6 +1265,9 @@ impl<'a> Parser<'a> {
         if self.at_run() {
             return self.run_expr(false);
         }
+        if self.at_use() {
+            return self.use_expr(false);
+        }
         let mut left = self.assign_expr();
         while self.is("with") {
             self.bump();
@@ -1241,6 +1284,9 @@ impl<'a> Parser<'a> {
     fn expr_no_with(&mut self) -> Expr {
         if self.at_run() {
             return self.run_expr(true);
+        }
+        if self.at_use() {
+            return self.use_expr(true);
         }
         self.assign_expr()
     }
@@ -1671,6 +1717,12 @@ impl<'a> Parser<'a> {
                     let span = t.span;
                     self.error(span, "wrap `run ...` in parentheses when it is part of a larger expression");
                     return self.run_expr(true);
+                }
+                "use" if self.at_use() => {
+                    // `use` inside a larger expression: `(use A).b`.
+                    let span = t.span;
+                    self.error(span, "wrap `use ...` in parentheses when it is part of a larger expression");
+                    return self.use_expr(true);
                 }
                 "function" if self.is_n(1, "(") || self.is_n(1, "<") => {
                     self.bump();

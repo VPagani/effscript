@@ -22,7 +22,7 @@ source maps point back to EffScript positions.
 | --- | --- |
 | `efs_syntax` | Lexer, parser and syntax tree. Newline-sensitive, with re-lexing for markup text. |
 | `efs_codegen` | Lowering to TypeScript or JavaScript, the span map, and source maps. |
-| `efs_check` | In-process type checking, hovers and declaration emit with tsrs, and the effect-tsgo bridge. |
+| `efs_check` | In-process type checking, hovers and declaration emit with tsrs, the type-aware `run`/`use` check, and the effect-tsgo bridge. |
 | `efs_fmt` | The formatter. |
 | `efs_lint` | Lint rules. |
 | `efs_lsp` | The language server. |

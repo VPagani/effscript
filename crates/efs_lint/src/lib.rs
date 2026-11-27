@@ -387,7 +387,7 @@ impl Linter {
                     }
                 });
                 if !used {
-                    let hint = if l.init.as_ref().is_some_and(|i| matches!(i.kind, ExprKind::Bind(_))) {
+                    let hint = if l.init.as_ref().is_some_and(|i| matches!(i.kind, ExprKind::Bind(BindKind::Run, _))) {
                         format!(
                             "; to run the effect without keeping its result, write `run ...` or name it `_{}`",
                             id.name
@@ -461,7 +461,7 @@ impl Linter {
             }
             StmtKind::Return(Some(e)) => {
                 if in_effect
-                    && let ExprKind::Bind(inner) = &e.kind
+                    && let ExprKind::Bind(BindKind::Run, inner) = &e.kind
                     && let ExprKind::Call { callee, .. } = &inner.kind
                     && let ExprKind::Member { object, name, .. } = &callee.kind
                     && matches!(&object.kind, ExprKind::Ident(n) if n == "Effect")

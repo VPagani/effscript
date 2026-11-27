@@ -56,6 +56,8 @@ pub(crate) struct Gen<'s> {
     pub(crate) keep_imports: Option<HashSet<String>>,
     /// Runtime names that resolved to the user's own imports.
     rt_hits: HashSet<String>,
+    /// `run` and `use` sites, and what local names are.
+    pub(crate) binds: crate::bind::Binds,
 }
 
 impl<'s> Gen<'s> {
@@ -77,6 +79,7 @@ impl<'s> Gen<'s> {
             local_errors: Vec::new(),
             keep_imports: None,
             rt_hits: HashSet::new(),
+            binds: Default::default(),
         }
     }
 
@@ -209,6 +212,7 @@ impl<'s> Gen<'s> {
 
     fn generate(&mut self, module: &Module) {
         self.collect_bindings(module);
+        self.binds.collect(module);
         let mut prev: Option<&Item> = None;
         for item in &module.items {
             let before = self.w.out.len();
@@ -265,10 +269,16 @@ impl<'s> Gen<'s> {
                 None => header.push_str(&format!("import {{ {} }} from \"{m}\"\n", names.join(", "))),
             }
         }
+        let mut binds = self.resolve_binds();
         inserts.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
         for (at, text) in inserts {
             let len = text.len() as u32;
             self.w.out.insert_str(at as usize, &text);
+            for b in &mut binds {
+                if b.gen_pos >= at {
+                    b.gen_pos += len;
+                }
+            }
             for seg in &mut self.w.segs {
                 if seg.gen_start >= at {
                     seg.gen_start += len;
@@ -284,7 +294,10 @@ impl<'s> Gen<'s> {
         let mut code = header;
         code.push_str(&self.w.out);
         let segments = self.w.segs.iter().map(|s| Segment { gen_start: s.gen_start + shift, ..*s }).collect();
-        Output { code, segments, diagnostics: self.diags }
+        for b in &mut binds {
+            b.gen_pos += shift;
+        }
+        Output { code, segments, diagnostics: self.diags, binds }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -463,22 +476,28 @@ impl<'s> Gen<'s> {
         }
     }
 
-    pub(crate) fn yield_star(&mut self, span: Span) {
+    pub(crate) fn yield_star(&mut self, span: Span, kind: BindKind) {
         if self.update.is_some() && !self.in_gen {
-            self.error(
-                span,
-                "in an update, `run` issues a command and must be a statement of its own at the top of the update, outside any `if` or loop",
-            );
+            if kind == BindKind::Run {
+                self.error(
+                    span,
+                    "in an update, `run` issues a command and must be a statement of its own at the top of the update, outside any `if` or loop",
+                );
+            }
         } else if !self.in_gen {
             self.error(
                 span,
-                "`run` can only be used inside an `effect function`, an `effect` arrow or an `effect { }` block",
+                format!(
+                    "`{}` can only be used inside an `effect function`, an `effect` arrow or an `effect {{ }}` block",
+                    kind.keyword()
+                ),
             );
         }
         self.w.s("yield* ");
     }
 
     fn fn_decl(&mut self, f: &FnDecl) {
+        self.bound(&f.name);
         if f.func.effect {
             self.w.s("const ");
             self.w.v(f.name.span);
@@ -535,9 +554,8 @@ impl<'s> Gen<'s> {
                 self.w.indent();
                 self.w.nl();
                 self.w.s("return ");
-                if let ExprKind::Bind(inner) = &e.kind {
-                    self.yield_star(e.span);
-                    self.expr_top(inner);
+                if let ExprKind::Bind(kind, inner) = &e.kind {
+                    self.bind(e.span, *kind, inner);
                 } else {
                     self.expr_top(e);
                 }
@@ -900,7 +918,10 @@ impl<'s> Gen<'s> {
     pub(crate) fn pattern(&mut self, p: &Pattern) {
         self.w.push_node(p.span);
         match &p.kind {
-            PatternKind::Ident(id) => self.w.v(id.span),
+            PatternKind::Ident(id) => {
+                self.bound(id);
+                self.w.v(id.span)
+            }
             PatternKind::Object { props, rest } => {
                 self.w.s("{ ");
                 for (i, prop) in props.iter().enumerate() {
@@ -911,6 +932,8 @@ impl<'s> Gen<'s> {
                     if let Some(v) = &prop.value {
                         self.w.s(": ");
                         self.pattern(v);
+                    } else {
+                        self.bound(&prop.key);
                     }
                     if let Some(d) = &prop.default {
                         self.w.s(" = ");
@@ -922,6 +945,7 @@ impl<'s> Gen<'s> {
                         self.w.s(", ");
                     }
                     self.w.s("...");
+                    self.bound(r);
                     self.w.v(r.span);
                 }
                 self.w.s(" }");
@@ -1000,9 +1024,8 @@ impl<'s> Gen<'s> {
             StmtKind::Let(l) => self.let_decl(l),
             StmtKind::Fn(f) => self.fn_decl(f),
             StmtKind::Expr(e) => {
-                if let ExprKind::Bind(inner) = &e.kind {
-                    self.yield_star(e.span);
-                    self.expr_top(inner);
+                if let ExprKind::Bind(kind, inner) = &e.kind {
+                    self.bind(e.span, *kind, inner);
                 } else {
                     // An object literal or function expression would otherwise start a block or declaration.
                     let wrap = matches!(e.kind, ExprKind::Object(_));
@@ -1033,9 +1056,8 @@ impl<'s> Gen<'s> {
                 self.w.s("return");
                 if let Some(e) = e {
                     self.w.s(" ");
-                    if let ExprKind::Bind(inner) = &e.kind {
-                        self.yield_star(e.span);
-                        self.expr_top(inner);
+                    if let ExprKind::Bind(kind, inner) = &e.kind {
+                        self.bind(e.span, *kind, inner);
                     } else {
                         self.expr_top(e);
                     }
@@ -1044,7 +1066,7 @@ impl<'s> Gen<'s> {
             StmtKind::If(i) => self.if_stmt(i),
             StmtKind::For { kind, pattern, iter, body, bind } => {
                 if *bind {
-                    self.yield_star(s.span);
+                    self.yield_star(s.span, BindKind::Run);
                     self.rtm("Stream", "runForEach");
                     self.w.s("(");
                     self.expr(iter);
@@ -1053,9 +1075,11 @@ impl<'s> Gen<'s> {
                     self.w.s(") => ");
                     // A body that only runs one effect needs no generator.
                     match body.stmts.as_slice() {
-                        [Stmt { kind: StmtKind::Expr(Expr { kind: ExprKind::Bind(inner), .. }), .. }] => {
-                            self.arrow_body_expr(inner)
-                        }
+                        [
+                            Stmt {
+                                kind: StmtKind::Expr(Expr { kind: ExprKind::Bind(BindKind::Run, inner), .. }), ..
+                            },
+                        ] => self.arrow_body_expr(inner),
                         _ => self.effect_gen(body),
                     }
                     self.w.s(")");
@@ -1136,10 +1160,9 @@ impl<'s> Gen<'s> {
 
     /// An expression in a position where `yield*` needs no parentheses.
     pub(crate) fn expr_top(&mut self, e: &Expr) {
-        if let ExprKind::Bind(inner) = &e.kind {
+        if let ExprKind::Bind(kind, inner) = &e.kind {
             self.w.push_node(e.span);
-            self.yield_star(e.span);
-            self.expr_top(inner);
+            self.bind(e.span, *kind, inner);
             self.w.pop_node();
         } else {
             self.expr(e);
@@ -1321,10 +1344,9 @@ impl<'s> Gen<'s> {
                 self.expr_top(layer);
                 self.w.s(")");
             }
-            ExprKind::Bind(inner) => {
+            ExprKind::Bind(kind, inner) => {
                 self.w.s("(");
-                self.yield_star(e.span);
-                self.expr_top(inner);
+                self.bind(e.span, *kind, inner);
                 self.w.s(")");
             }
             ExprKind::Catch { expr, handler } => self.catch(expr, handler),

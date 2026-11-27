@@ -5,7 +5,7 @@ import { currentUser, AppLive } from "./users.efs"
 
 export effect function onboard() {
   const user = run currentUser()
-  const mailer = run Mailer
+  const mailer = use Mailer
   run mailer.send(user.email ?? "nobody", welcomeText(user.name))
   return user.id
 }

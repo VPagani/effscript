@@ -143,3 +143,81 @@ fn effect_language_service_diagnostics_map_to_efs() {
     assert_eq!(d.line_col().map(|(l, _)| l), Some(2));
     assert!(!leftover, "the temporary tsconfig was not removed");
 }
+
+#[test]
+fn run_on_imported_services_and_use_on_imported_effects_are_errors() {
+    let root = root();
+    let modules = root.join("examples/node_modules");
+    if !modules.join("effect").exists() {
+        return;
+    }
+    let tmp = std::env::temp_dir().join(format!("efs-e2e-bind-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(
+        tmp.join("tsconfig.json"),
+        std::fs::read_to_string(root.join("examples/tsconfig.json"))
+            .unwrap()
+            .replace("\"include\": [\"src\"]", "\"include\": [\".\"]"),
+    )
+    .unwrap();
+    std::fs::copy(root.join("examples/package.json"), tmp.join("package.json")).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&modules, tmp.join("node_modules")).unwrap();
+    // A service written in plain TypeScript, and an effect exported from another EffScript file.
+    std::fs::copy(root.join("examples/src/legacy/mailer.ts"), tmp.join("mailer.ts")).unwrap();
+    std::fs::write(
+        tmp.join("tasks.efs"),
+        "import { Effect } from \"effect\"\n\nexport const cleanup = Effect.log(\"clean\")\n",
+    )
+    .unwrap();
+    let src = "import { Clock, Effect } from \"effect\"
+import { Mailer } from \"./mailer.js\"
+import { cleanup } from \"./tasks.efs\"
+
+export const bad = effect {
+  const mailer = run Mailer
+  const clock = run Clock.Clock
+  use cleanup
+  const nothing = use Effect.void
+  return [mailer, clock, nothing]
+}
+
+export const good = effect {
+  const mailer = use Mailer
+  const clock = use Clock.Clock
+  const now = run Clock.currentTimeMillis
+  run cleanup
+  run mailer.send(\"a@example.com\", \"hi\")
+  return [clock, now]
+}
+";
+    std::fs::write(tmp.join("main.efs"), src).unwrap();
+    let mut session = efs_check::Session::new(efs_check::Workspace::discover(&tmp));
+    let local = session.efs_diagnostics();
+    let diags = session.type_diagnostics(true);
+    let _ = std::fs::remove_dir_all(&tmp);
+    assert!(local.is_empty(), "{local:#?}");
+    // `line:column` (both 1-based), code and the text of the reported span.
+    let found: Vec<String> = diags
+        .iter()
+        .map(|d| {
+            let span = d.span.unwrap();
+            let (l, c) = d.line_col().unwrap();
+            format!("{}:{} {} `{}`", l + 1, c + 1, d.code, &src[span.start as usize..span.end as usize])
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            "6:22 run-service `Mailer`",
+            "7:21 run-service `Clock.Clock`",
+            "8:7 use-non-service `cleanup`",
+            "9:23 use-non-service `Effect.void`",
+        ],
+        "{diags:#?}"
+    );
+    assert_eq!(diags[0].message, "`Mailer` is a service; get it with `use Mailer`");
+    assert_eq!(diags[2].message, "`cleanup` is an effect, not a service; run it with `run cleanup`");
+    assert!(diags.iter().all(|d| d.file.as_ref().unwrap().ends_with("main.efs")));
+}

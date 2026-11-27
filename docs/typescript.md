@@ -25,7 +25,7 @@ export const MailerConsole = Layer.succeed(Mailer, { send: (to, body) => Effect.
 import { Mailer, MailerConsole } from "./legacy/mailer.js"
 
 export effect function onboard(to: string) {
-  const mailer = run Mailer
+  const mailer = use Mailer
   run mailer.send(to, "Welcome!")
 }
 

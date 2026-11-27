@@ -429,6 +429,59 @@ impl Session {
             }
             out.push(CheckDiagnostic { file: file_path, span, text, message, code, severity });
         }
+        out.extend(self.bind_diagnostics(program));
+        out
+    }
+
+    /// Reports `run` on a service and `use` on something that is not a service, for the
+    /// operands codegen could not classify from their file alone (imports, dotted names,
+    /// calls). The operand of each `yield*` is classified by its type.
+    fn bind_diagnostics(&self, program: &'static Program) -> Vec<CheckDiagnostic> {
+        let ctx = Context::background();
+        let mut out = Vec::new();
+        for c in self.files.values() {
+            if c.output.binds.is_empty() {
+                continue;
+            }
+            let Some(sf) = program.get_source_file(&path_str(&output_path(&c.path))) else { continue };
+            let mut checker = program.get_type_checker_for_file(&ctx, sf);
+            let text: Arc<str> = Arc::from(c.src.as_str());
+            for site in &c.output.binds {
+                let Some(operand) = yield_operand(sf, site.gen_pos) else { continue };
+                let ty = checker.get_type_at_location(operand);
+                let Some(service) = service_kind(&mut checker, ty) else { continue };
+                let src = site.operand.text(&c.src);
+                let name = (!src.contains('\n') && src.len() <= 60).then_some(src);
+                let (message, code) = match (site.kind, service) {
+                    (efs_codegen::BindKind::Run, true) => (
+                        match name {
+                            Some(n) => format!("`{n}` is a service; get it with `use {n}`"),
+                            None => "this is a service; get services with `use`".to_string(),
+                        },
+                        "run-service",
+                    ),
+                    (efs_codegen::BindKind::Use, false) => {
+                        let n = name.unwrap_or("this");
+                        let message = if has_property(&mut checker, ty, EFFECT_TYPE_ID) {
+                            format!("`{n}` is an effect, not a service; run it with `run {n}`")
+                        } else {
+                            let shown = checker.type_to_string_exported(ty);
+                            format!("`{n}` is not a service (its type is `{shown}`); `use` only gets services")
+                        };
+                        (message, "use-non-service")
+                    }
+                    _ => continue,
+                };
+                out.push(CheckDiagnostic {
+                    file: Some(c.path.clone()),
+                    span: Some(site.operand),
+                    text: Some(text.clone()),
+                    message,
+                    code: code.to_string(),
+                    severity: Severity::Error,
+                });
+            }
+        }
         out
     }
 
@@ -456,6 +509,46 @@ impl Drop for Session {
     fn drop(&mut self) {
         self.invalidate();
     }
+}
+
+/// The property every Effect 4 service key has: `Context.Key` declares
+/// `readonly [ServiceTypeId]: ServiceTypeId` with `ServiceTypeId = "~effect/Context/Service"`.
+/// `Context.Service` (classes and function-style keys) and `Context.Reference` (such as
+/// `Clock` or `References.CurrentLogLevel`) all extend `Key`; effects and other yieldables
+/// (`Config`, `Option`, tagged errors) do not have it.
+const SERVICE_TYPE_ID: &str = "~effect/Context/Service";
+
+/// The property every Effect 4 effect has (`Effect.TypeId`).
+const EFFECT_TYPE_ID: &str = "~effect/Effect";
+
+/// The operand of the `yield*` expression that starts at `gen_pos`.
+fn yield_operand(sf: P<tsrs_ast::SourceFile>, gen_pos: u32) -> Option<P<tsrs_ast::Node>> {
+    let token = tsrs_astnav::get_touching_token(sf, gen_pos);
+    if token.kind() != tsrs_ast::Kind::YieldKeyword {
+        return None;
+    }
+    let parent = token.parent()?;
+    if parent.kind() != tsrs_ast::Kind::YieldExpression {
+        return None;
+    }
+    let y = parent.as_yield_expression();
+    y.asterisk_token()?;
+    y.expression()
+}
+
+fn has_property(checker: &mut tsrs_checker::Checker, ty: P<tsrs_checker::Type>, name: &str) -> bool {
+    let apparent = checker.get_apparent_type(ty);
+    checker.get_property_of_type_exported(apparent, name).is_some()
+}
+
+/// Whether a value of type `ty` is a service key, or `None` when the type says nothing
+/// (`any`, `unknown`, `never`, or an unresolved name, which tsrs reports itself).
+fn service_kind(checker: &mut tsrs_checker::Checker, ty: P<tsrs_checker::Type>) -> Option<bool> {
+    use tsrs_checker::TypeFlags;
+    if ty.flags().intersects(TypeFlags::AnyOrUnknown | TypeFlags::Never | TypeFlags::TypeParameter) {
+        return None;
+    }
+    Some(has_property(checker, ty, SERVICE_TYPE_ID))
 }
 
 fn root_dir_of(p: &str) -> String {

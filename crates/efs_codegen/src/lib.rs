@@ -2,6 +2,7 @@
 //! and `@effect/ui`, together with a span map that relates every piece of generated text
 //! to the EffScript source it came from.
 
+mod bind;
 mod component;
 mod lower;
 mod machine;
@@ -11,6 +12,7 @@ mod writer;
 
 use efs_syntax::{Diagnostic, Span};
 
+pub use efs_syntax::ast::BindKind;
 pub use writer::{Segment, SegmentKind};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -42,6 +44,19 @@ pub struct Output {
     /// Segments ordered by generated position, never overlapping in generated text.
     pub segments: Vec<Segment>,
     pub diagnostics: Vec<Diagnostic>,
+    /// The `run` and `use` sites whose operand this file alone cannot tell to be a service or
+    /// not, for the type checker to decide.
+    pub binds: Vec<BindSite>,
+}
+
+/// A `run` or `use` in an effect body, which compiles to `yield* operand`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BindSite {
+    pub kind: BindKind,
+    /// The operand in the EffScript source.
+    pub operand: Span,
+    /// The offset of the `yield*` in the generated code.
+    pub gen_pos: u32,
 }
 
 /// Parses and compiles EffScript source text.

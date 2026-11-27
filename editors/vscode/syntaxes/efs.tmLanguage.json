@@ -84,6 +84,7 @@
     "keywords": {
       "patterns": [
         { "name": "keyword.control.efs", "match": "\\b(if|else|for|of|while|return|break|continue|match|catch|fail|defer|throw|with|run)\\b" },
+        { "name": "keyword.control.efs", "match": "\\buse(?=[ \\t]+[A-Za-z_$])" },
         { "name": "keyword.control.effect.efs", "match": "\\b(effect|on|invoke|after|initial|update|stay|view|prop|event|emit|events|effects|streams|timers|root|input)\\b" },
         { "name": "keyword.other.efs", "match": "\\b(import|export|from|as|type|satisfies|new|typeof|keyof|readonly|instanceof|in|for)\\b" },
         { "name": "storage.type.efs", "match": "\\b(const|let|function)\\b" },
