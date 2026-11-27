@@ -1,0 +1,47 @@
+// The section of a page being read, for "On this page".
+import { Subscription } from "@effect/ui";
+
+/** How far below the top of the window a heading counts as reached: past the sticky header. */
+const reached = 120;
+
+const current = (ids: string[]): string => {
+  const root = document.documentElement;
+  if ids.length > 0 && innerHeight + scrollY >= root.scrollHeight - 4 {
+    return ids[ids.length - 1];
+  }
+  let found = "";
+  for id of ids {
+    const element = document.getElementById(id);
+    if element != null && element.getBoundingClientRect().top <= reached {
+      found = id;
+    }
+  }
+  return found;
+};
+
+/** Sends `message` with the id of the last heading in `ids` scrolled past, as the page scrolls. */
+export const sectionInView = <M>(ids: string[], message: (id: string) => M) =>
+  Subscription.make("SectionInView", ids.join(" "), (key) => {
+    const watched = key == "" ? [] : key.split(" ");
+    return Stream.callback<string>((queue) =>
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          let frame = 0;
+          const measure = () => {
+            frame = 0;
+            Queue.offerUnsafe(queue, current(watched));
+          };
+          const onScroll = () => {
+            if frame == 0 {
+              frame = requestAnimationFrame(measure);
+            }
+          };
+          addEventListener("scroll", onScroll, { passive: true });
+          measure();
+          return onScroll;
+        }),
+        (onScroll) => Effect.sync(() => removeEventListener("scroll", onScroll)),
+      ))
+      |> Stream.changes
+      |> Stream.map(message);
+  });

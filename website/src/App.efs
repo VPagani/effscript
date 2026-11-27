@@ -1,11 +1,33 @@
 // The site's shell: the header, the current page and the footer.
-import { Html } from "@effect/ui/html";
-import { Router, UiSchema } from "@effect/ui";
+import { Html, HtmlHead } from "@effect/ui/html";
+import { Head, Router, UiSchema } from "@effect/ui";
 import { AppRoute } from "./routes.efs";
-import { Home } from "./pages/Home.efs";
-import { Playground } from "./pages/Playground.efs";
+import { HomePage, PlaygroundPage } from "./pages/lazy.efs";
+import { DocsIndex } from "./pages/docs/DocsIndex.efs";
+import { DocPage } from "./pages/docs/DocPage.efs";
 import { githubIcon, logo } from "./lib/icons.efs";
-import { languageGuide, repository } from "./lib/links.efs";
+import { repository } from "./lib/links.efs";
+
+const description = "EffScript is a small language that compiles to the Effect code you would write by hand. effect function and run, typed errors, services, schemas, state machines and UI components.";
+
+/** The site's head; the documentation pages set their own title and description below it. */
+const siteHead = (route: AppRoute) => [
+  HtmlHead.lang("en"),
+  Head.title(
+    route._tag == "Playground" ? "Playground · EffScript" : route._tag == "NotFound" ? "Page not found · EffScript" : "EffScript: a readable syntax for Effect",
+  ),
+  HtmlHead.meta({ name: "description", content: description }),
+  HtmlHead.meta({ property: "og:title", content: "EffScript" }),
+  HtmlHead.meta({
+    property: "og:description",
+    content: "A readable syntax for Effect. If you know async and await, you already know effect and run.",
+  }),
+];
+
+const isDocs = (route: AppRoute): boolean => route._tag == "Docs" || route._tag == "Doc";
+
+const loading = <M>(h: Html.H<M>, text: string) =>
+  <p class="px-6 py-32 text-center text-sm text-zinc-500">{text}</p>;
 
 const navLink = (active: boolean): string =>
   `rounded-md px-3 py-1.5 text-sm font-medium transition ${active ? "bg-white/10 text-white" : "text-zinc-400 hover:text-white"}`;
@@ -18,19 +40,21 @@ export component App {
     current = next;
   }
 
+  head = ({ model }) => siteHead(model.current);
+
   subscriptions = ({ model }) => [Router.subscription(AppRoute, model.current, (next) => ChangedRoute({ next }))];
 
   view =>
     <div class="flex min-h-dvh flex-col">
       <header class="sticky top-0 z-50 h-16 border-b border-white/5 bg-zinc-950/80 backdrop-blur">
-        <div class="mx-auto flex h-full max-w-6xl items-center gap-6 px-6">
+        <div class={["mx-auto flex h-full items-center gap-6", isDocs(current) ? "max-w-7xl px-4 sm:px-6" : "max-w-6xl px-6"]}>
           <a href="/" class="flex items-center gap-2.5 font-semibold tracking-tight text-white">
             {logo(h)}
             EffScript
           </a>
           <nav class="flex items-center gap-1">
             <a href="/playground" class={navLink(current._tag == "Playground")}>Playground</a>
-            <a href={languageGuide} class={navLink(false)}>Docs</a>
+            <a href="/docs" class={navLink(isDocs(current))}>Docs</a>
           </nav>
           <a href={repository} class="ml-auto text-zinc-400 transition hover:text-white" aria-label="GitHub">
             {githubIcon(h, "h-5 w-5")}
@@ -39,8 +63,18 @@ export component App {
       </header>
       <main class="flex-1">
         {AppRoute.match(current, {
-          Home: () => <Home key="home" />,
-          Playground: () => <Playground key="playground" />,
+          Home: () =>
+            HomePage(h, {
+              key: "home",
+              fallback: (result) => result._tag == "Failure" ? loading(h, "This page couldn't be loaded.") : <div class="min-h-dvh" />,
+            }),
+          Playground: () =>
+            PlaygroundPage(h, {
+              key: "playground",
+              fallback: (result) => loading(h, result._tag == "Failure" ? "The playground couldn't be loaded." : "Loading the playground…"),
+            }),
+          Docs: () => <DocsIndex key="docs" />,
+          Doc: (route) => <DocPage key={AppRoute.printPath(route)} name={route.params.name} />,
           NotFound: () =>
             <section class="mx-auto max-w-xl px-6 py-32 text-center">
               <p class="font-mono text-sm text-violet-300">404</p>
@@ -52,7 +86,7 @@ export component App {
         })}
       </main>
       {current._tag == "Playground" ? null : <footer class="border-t border-white/5">
-        <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-6 py-8 text-sm text-zinc-500">
+        <div class={["mx-auto flex flex-wrap items-center gap-4 py-8 text-sm text-zinc-500", isDocs(current) ? "max-w-7xl px-4 sm:px-6" : "max-w-6xl px-6"]}>
           <span>MIT licensed</span>
           <span>Built with EffScript, Effect UI and Tailwind CSS</span>
           <a href={repository} class="ml-auto hover:text-zinc-300">GitHub</a>

@@ -326,6 +326,10 @@ impl Gen<'_> {
             self.w.dedent();
             self.w.nl();
             self.w.s("}");
+        } else if !c.options().any(|(k, _)| k.name == "update") {
+            // Effect UI requires an `update`, even for a component without messages.
+            entry(self);
+            self.w.s("update: ($) => $.model");
         }
 
         // view

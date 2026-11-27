@@ -1,0 +1,154 @@
+// The documentation: the Markdown files in docs/, compiled at build time by Effect UI's
+// Markdown plugin, and what the pages derive from them (titles, outlines, links).
+import { Markdown } from "@effect/ui/html";
+import gettingStarted from "../../../docs/getting-started.md";
+import language from "../../../docs/language.md";
+import cli from "../../../docs/cli.md";
+import lint from "../../../docs/lint.md";
+import editors from "../../../docs/editors.md";
+import bundlers from "../../../docs/bundlers.md";
+import typescript from "../../../docs/typescript.md";
+import compatibility from "../../../docs/compatibility.md";
+import architecture from "../../../docs/architecture.md";
+import { repository } from "./links.efs";
+
+export type Doc = {
+  /** The file name without `.md`, and the page's path under `/docs/`. */
+  slug: string
+  /** The name in the sidebar. */
+  label: string
+  group: string
+  /** The description when the page doesn't open with a paragraph. */
+  blurb: string
+  document: Markdown.Document
+};
+
+const doc = (slug: string, label: string, group: string, source: Markdown.DocumentEncoded, blurb: string = ""): Doc =>
+  ({ slug, label, group, blurb, document: Markdown.decodeDocument(source) });
+
+/** Every page, in reading order. */
+export const docs: Doc[] = [
+  doc("getting-started", "Getting started", "Guide", gettingStarted, "Install the efs command, create a project and run a first EffScript program."),
+  doc("language", "Language", "Guide", language),
+  doc("cli", "CLI", "Tools", cli, "The efs command builds, type checks, formats and lints EffScript projects, and reads its settings from efs.json."),
+  doc("lint", "Lint rules", "Tools", lint),
+  doc("editors", "Editors", "Tools", editors, "The VS Code extension, the EffScript language server in other editors, and TypeScript's own language server."),
+  doc("bundlers", "Bundlers", "Tools", bundlers),
+  doc("typescript", "TypeScript interop", "Reference", typescript),
+  doc("compatibility", "Library versions", "Reference", compatibility),
+  doc("architecture", "Architecture", "Reference", architecture),
+];
+
+export const groups = ["Guide", "Tools", "Reference"];
+
+export const docBySlug = (slug: string): Doc | undefined => docs.find((d) => d.slug == slug);
+
+export const docPath = (d: Doc): string => `/docs/${d.slug}`;
+
+/** The source file on GitHub, to edit. */
+export const editUrl = (d: Doc): string => `${repository}/edit/main/docs/${d.slug}.md`;
+
+/** The plain text of inline content, as a heading's anchor and the page title read it. */
+export const plainText = (content: ReadonlyArray<Markdown.Inline>): string =>
+  content.map((node) =>
+    match node {
+      Text({ value }) => value
+      InlineCode({ value }) => value
+      Emphasis({ content }) => plainText(content)
+      Strong({ content }) => plainText(content)
+      Strikethrough({ content }) => plainText(content)
+      Link({ content }) => plainText(content)
+      Image({ alt }) => alt
+      HardBreak => " "
+    }).join("");
+
+const punctuation = new RegExp("[^\\p{L}\\p{N}\\s_-]", "gu");
+const space = new RegExp("\\s", "gu");
+
+/** GitHub's heading anchors: `## \`efs.json\`` is `#efsjson`, so links written for GitHub work here. */
+export const slugify = (text: string): string =>
+  text.trim().toLowerCase().replace(punctuation, "").replace(space, "-");
+
+/** The page title: the text of the document's first heading. */
+export const title = (d: Doc): string => {
+  const first = d.document.blocks.find((b) => b._tag == "Heading");
+  return first != undefined && first._tag == "Heading" ? plainText(first.content) : d.label;
+};
+
+/** The paragraph that opens the page, before its first section, shortened for a meta description. */
+export const summary = (d: Doc): string => {
+  const sectionAt = d.document.blocks.findIndex((b) => b._tag == "Heading" && b.level > 1);
+  const intro = sectionAt == -1 ? d.document.blocks : d.document.blocks.slice(0, sectionAt);
+  const first = intro.find((b) => b._tag != "Heading");
+  const text = first != undefined && first._tag == "Paragraph" ? plainText(first.content).replaceAll("\n", " ") : d.blurb == "" ? title(d) : d.blurb;
+  if text.length <= 160 {
+    return text;
+  }
+  const cut = text.slice(0, 157);
+  return `${cut.slice(0, cut.lastIndexOf(" "))}…`;
+};
+
+export type Entry = { level: number, text: string, id: string };
+
+export type Outline = {
+  /** The anchor of each heading, by node. */
+  ids: Map<Markdown.Heading, string>
+  /** The second and third level headings, for "On this page". */
+  entries: Entry[]
+};
+
+const outlines = new Map<string, Outline>();
+
+/** The headings of a page with their anchors; a repeated anchor gets `-1`, `-2`, ... as on GitHub. */
+export const outline = (d: Doc): Outline => {
+  const hit = outlines.get(d.slug);
+  if hit != undefined {
+    return hit;
+  }
+  const ids = new Map<Markdown.Heading, string>();
+  const seen = new Map<string, number>();
+  const entries: Entry[] = [];
+  for block of d.document.blocks {
+    if block._tag == "Heading" {
+      const text = plainText(block.content);
+      const base = slugify(text);
+      const count = seen.get(base) ?? 0;
+      seen.set(base, count + 1);
+      const id = count == 0 ? base : `${base}-${count}`;
+      ids.set(block, id);
+      if block.level == 2 || block.level == 3 {
+        entries.push({ level: block.level, text, id });
+      }
+    }
+  }
+  const result = { ids, entries };
+  outlines.set(d.slug, result);
+  return result;
+};
+
+const scheme = new RegExp("^[a-z][a-z0-9+.-]*:", "i");
+
+const docLink = new RegExp("^(?:\\./)?([a-z0-9-]+)\\.md$");
+
+/** Whether a link leaves the site. */
+export const isExternal = (url: string): boolean => scheme.test(url);
+
+/**
+ * A link written for the docs on GitHub, as a link on this site: `cli.md#efsjson` is
+ * `/docs/cli#efsjson`, and a file that isn't a page, such as `../CONTRIBUTING.md`, opens on
+ * GitHub.
+ */
+export const resolveLink = (url: string): string => {
+  if isExternal(url) || url.startsWith("#") || url.startsWith("/") {
+    return url;
+  }
+  const hashAt = url.indexOf("#");
+  const path = hashAt == -1 ? url : url.slice(0, hashAt);
+  const hash = hashAt == -1 ? "" : url.slice(hashAt);
+  const page = docLink.exec(path);
+  if page != null && docBySlug(page[1]) != undefined {
+    return `/docs/${page[1]}${hash}`;
+  }
+  const file = new URL(path, "https://repository/docs/").pathname;
+  return `${repository}/blob/main${file}${hash}`;
+};

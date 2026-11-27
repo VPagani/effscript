@@ -13,7 +13,9 @@
     "noEmit": true,
     "skipLibCheck": true,
     "types": [
-      "vite/client"
+      "vite/client",
+      "@effect/ui/html/MarkdownContent",
+      "@effect/ui/html/HtmlServerViteDocument"
     ],
     "resolveJsonModule": true
   },

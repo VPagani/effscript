@@ -1347,7 +1347,17 @@ impl<'s> Gen<'s> {
                     self.w.s("?.");
                 }
                 self.type_args(type_args);
-                self.args(args);
+                match (&callee.kind, args.as_slice()) {
+                    // `import("./page.efs")` loads the compiled module, as a static import does.
+                    (ExprKind::Ident(name), [ArrayElem::Expr(Expr { kind: ExprKind::Lit(raw), span, .. })])
+                        if name == "import" && (raw.starts_with('"') || raw.starts_with('\'')) =>
+                    {
+                        self.w.s("(");
+                        self.module_specifier(&StrLit { raw: raw.clone(), span: *span });
+                        self.w.s(")");
+                    }
+                    _ => self.args(args),
+                }
             }
             ExprKind::Member { object, name, optional } => {
                 self.expr(object);

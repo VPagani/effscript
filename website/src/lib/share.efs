@@ -21,6 +21,6 @@ export const sourceInUrl = (): string | undefined => {
   return hash.startsWith("#code=") ? decode(hash.slice(6)) : undefined;
 };
 
-/** A link to the playground with `source`. */
+/** A link to the playground with `source`; relative to the site where there is no page (in the prerender). */
 export const linkTo = (source: string): string =>
-  `${location.origin}/playground#code=${encode(source)}`;
+  `${globalThis.location?.origin ?? ""}/playground#code=${encode(source)}`;

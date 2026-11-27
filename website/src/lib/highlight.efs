@@ -3,20 +3,22 @@ import { createHighlighterCoreSync } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import typescript from "shiki/langs/typescript.mjs";
 import javascript from "shiki/langs/javascript.mjs";
+import shellscript from "shiki/langs/shellscript.mjs";
+import json from "shiki/langs/json.mjs";
 import theme from "shiki/themes/github-dark-default.mjs";
 import grammar from "../../../editors/vscode/syntaxes/efs.tmLanguage.json";
 
-export type Lang = "efs" | "ts" | "js";
+export type Lang = "efs" | "ts" | "js" | "bash" | "json";
 
 export type Token = { content: string, color: string, italic: boolean };
 
 const highlighter = createHighlighterCoreSync({
   themes: [theme],
-  langs: [...typescript, ...javascript, { ...grammar, name: "efs" }],
+  langs: [...typescript, ...javascript, ...shellscript, ...json, { ...grammar, name: "efs" }],
   engine: createJavaScriptRegexEngine({ forgiving: true }),
 });
 
-const names = { efs: "efs", ts: "typescript", js: "javascript" };
+const names = { efs: "efs", ts: "typescript", js: "javascript", bash: "shellscript", json: "json" };
 
 const cache = new Map<string, Token[][]>();
 

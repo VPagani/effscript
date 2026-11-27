@@ -1,0 +1,95 @@
+// A page of the documentation, at /docs/<name>, rendered from docs/<name>.md.
+import { Head } from "@effect/ui";
+import { Html, HtmlHead } from "@effect/ui/html";
+import { docPath, docBySlug, docs, editUrl, outline, summary, title } from "../../lib/docs.efs";
+import type { Doc } from "../../lib/docs.efs";
+import { prose } from "../../lib/prose.efs";
+import { sectionInView } from "../../lib/scroll.efs";
+import { mobileMenu, sidebar, toc } from "./nav.efs";
+
+/** The head of a documentation page: its title, and its first paragraph as the description. */
+export const docHead = (pageTitle: string, description: string) => [
+  Head.title(`${pageTitle} · EffScript docs`),
+  HtmlHead.meta({ name: "description", content: description }),
+  HtmlHead.meta({ property: "og:title", content: pageTitle }),
+  HtmlHead.meta({ property: "og:description", content: description }),
+];
+
+const neighbour = <M>(h: Html.H<M>, d: Doc | undefined, direction: string) =>
+  d == undefined ? <span /> : <a
+    href={docPath(d)}
+    class={[
+      "group flex flex-col rounded-xl border border-white/10 px-5 py-4 transition hover:border-violet-400/40 hover:bg-white/[0.03]",
+      direction == "Next" ? "items-end text-right" : "items-start",
+    ]}
+  >
+    <span class="text-xs text-zinc-500">{direction}</span>
+    <span class="mt-1 font-medium text-zinc-200 group-hover:text-white">{d.label}</span>
+  </a>;
+
+const notFound = <M>(h: Html.H<M>, name: string) =>
+  <div class="py-16">
+    <p class="font-mono text-sm text-violet-300">404</p>
+    <h1 class="mt-3 text-3xl font-bold tracking-tight text-white">No page named “{name}”</h1>
+    <p class="mt-4 text-zinc-400">Pick a page from the list, or start with the overview.</p>
+    <a href="/docs" class="mt-8 inline-block text-sm font-semibold text-violet-300 hover:text-violet-200">
+      All documentation →
+    </a>
+  </div>;
+
+const page = <M>(h: Html.H<M>, d: Doc, active: string) => {
+  const index = docs.indexOf(d);
+  const entries = outline(d).entries;
+  return [
+    <article class="min-w-0 pt-8 pb-16 lg:pt-12">
+      <p class="mb-3 text-sm font-medium text-violet-300">{d.group}</p>
+      {prose(h, d, entries.length > 2 ? <details class="group mt-6 mb-8 rounded-xl border border-white/10 bg-white/[0.02] xl:hidden">
+        <summary class="flex cursor-pointer list-none items-center px-4 py-3 text-sm font-medium text-zinc-300 [&::-webkit-details-marker]:hidden">
+          On this page<span class="ml-auto text-zinc-500 transition group-open:rotate-90">›</span>
+        </summary>
+        <div class="border-t border-white/5 px-4 py-3">{toc(h, entries, active)}</div>
+      </details> : null)}
+      <div class="mt-16 grid gap-4 border-t border-white/5 pt-8 sm:grid-cols-2">
+        {neighbour(h, docs[index - 1], "Previous")}
+        {neighbour(h, docs[index + 1], "Next")}
+      </div>
+      <a href={editUrl(d)} rel="noreferrer" class="mt-8 inline-block text-sm text-zinc-500 transition hover:text-zinc-300">
+        Edit this page on GitHub →
+      </a>
+    </article>,
+    <aside class="hidden xl:block">
+      {entries.length == 0 ? null : <div class="sticky top-16 max-h-[calc(100dvh-4rem)] overflow-y-auto py-12">
+        <p class="mb-3 text-xs font-semibold tracking-wider text-zinc-500 uppercase">On this page</p>
+        {toc(h, entries, active)}
+      </div>}
+    </aside>,
+  ];
+};
+
+const layout = <M>(h: Html.H<M>, name: string, d: Doc | undefined, active: string) =>
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-12 xl:grid-cols-[13rem_minmax(0,1fr)_12rem]">
+    {sidebar(h, name)}
+    {mobileMenu(h, name, d == undefined ? "Not found" : d.label)}
+    {d == undefined ? notFound(h, name) : page(h, d, active)}
+  </div>;
+
+export component DocPage {
+  prop name: String;
+  let section: String = "";
+
+  update ScrolledTo(id: String) {
+    section = id;
+  }
+
+  head = ({ props }) => {
+    const d = docBySlug(props.name);
+    return d == undefined ? [Head.title("Page not found · EffScript docs")] : docHead(title(d), summary(d));
+  };
+
+  subscriptions = ({ props }) => {
+    const d = docBySlug(props.name);
+    return d == undefined ? [] : [sectionInView(outline(d).entries.map((e) => e.id), (id) => DocPageMessage.ScrolledTo({ id }))];
+  };
+
+  view => layout(h, name, docBySlug(name), section);
+}

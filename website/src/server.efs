@@ -1,0 +1,21 @@
+// The server entry that prerenders every page at build time (see vite.config.js), so search
+// engines and link previews see each page's content and the browser hydrates it.
+import { layerHttp } from "@effect/ui/html/HtmlServerHttp";
+import { document } from "virtual:@effect/ui/document";
+import { App } from "./App.efs";
+import { AppRoute } from "./routes.efs";
+import { docs } from "./lib/docs.efs";
+
+const Pages = layerHttp(App, {
+  routes: AppRoute,
+  // The app's container names the path it was rendered for, so that the browser hydrates
+  // only that path: 404.html is served for every unknown path, and builds afresh there.
+  document: (page) =>
+    document(page).replace(`<div id="app">`, `<div id="app" data-path="${page.model == undefined ? "" : AppRoute.printPath(page.model.current)}">`),
+  status: (route) => route._tag == "NotFound" || (route._tag == "Doc" && !docs.some((d) => d.slug == route.params.name)) ? 404 : 200,
+});
+
+export { Pages as default };
+
+/** The paths written as HTML files; `/404` becomes `404.html`, which serves every other path. */
+export const prerender = ["/", "/playground", "/docs", ...docs.map((d) => `/docs/${d.slug}`), "/404"];

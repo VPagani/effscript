@@ -1,0 +1,11 @@
+// The pages that run the WebAssembly compiler, each loaded from a chunk of its own, so that
+// the documentation never downloads the compiler.
+import { Component } from "@effect/ui";
+
+export const HomePage = Component.lazy("Home", () => import("./Home.efs").then((m) => m.Home));
+
+export const PlaygroundPage = Component.lazy("Playground", () => import("./Playground.efs").then((m) => m.Playground));
+
+/** Loads the page at `path`, if it is one of these, so hydration adopts its prerendered markup. */
+export const preload = (path: string): Promise<void> =>
+  path == "/" ? HomePage.preload() : path == "/playground" ? PlaygroundPage.preload() : Promise.resolve();

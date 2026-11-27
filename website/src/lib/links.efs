@@ -1,4 +1,4 @@
 export const repository = "https://github.com/VPagani/effscript";
-export const languageGuide = `${repository}/blob/main/docs/language.md`;
-export const gettingStarted = `${repository}/blob/main/docs/getting-started.md`;
+export const languageGuide = "/docs/language";
+export const gettingStarted = "/docs/getting-started";
 export const websiteSource = `${repository}/tree/main/website`;

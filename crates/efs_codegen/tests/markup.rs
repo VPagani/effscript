@@ -16,3 +16,11 @@ fn controlled_properties_only_on_elements_that_have_them() {
     let code = ts("const v = (h) => <li value=\"1\">x</li>;\n");
     assert!(code.contains("h.li.attr(\"value\", \"1\")"), "{code}");
 }
+
+#[test]
+fn components_without_messages_still_have_an_update() {
+    let code = ts("component Banner {\n  prop text: String;\n  view => <p>{text}</p>\n}\n");
+    assert!(code.contains("update: ($) => $.model"), "{code}");
+    let code = ts("component Banner {\n  update = ($) => $.model;\n  view => <p>hi</p>\n}\n");
+    assert_eq!(code.matches("update:").count(), 1, "{code}");
+}

@@ -1,28 +1,40 @@
-import { copyFileSync, mkdirSync } from "node:fs"
 import tailwindcss from "@tailwindcss/vite"
 import effscript from "@effscript/vite"
+import { plugin as prerender } from "@effect/ui/html/HtmlServerVite"
+import { markdown } from "@effect/ui/html/MarkdownVite"
 import { defineConfig } from "vite"
 
 /**
- * GitHub Pages serves static files, so each route gets a copy of the app's page, and
- * `404.html` serves the app for any other path.
+ * The prerender runs the pages in Node, where the WebAssembly compiler has nothing to load
+ * from: there it never finishes loading, and the pages render what they show until it has.
  */
-const routes = (paths) => ({
-  name: "static-routes",
-  apply: "build",
-  closeBundle() {
-    const index = new URL("./dist/index.html", import.meta.url)
-    for (const path of paths) {
-      mkdirSync(new URL(`./dist/${path}/`, import.meta.url), { recursive: true })
-      copyFileSync(index, new URL(`./dist/${path}/index.html`, import.meta.url))
-    }
-    copyFileSync(index, new URL("./dist/404.html", import.meta.url))
-  },
+const compilerOnlyInTheBrowser = () => ({
+  name: "compiler-only-in-the-browser",
+  enforce: "pre",
+  applyToEnvironment: (environment) => environment.name === "ssr",
+  resolveId: (source) => (source === "@effscript/compiler/browser" ? "\0compiler-stub" : undefined),
+  load: (id) =>
+    id === "\0compiler-stub"
+      ? [
+          "export const init = () => new Promise(() => {})",
+          "export class EffScriptError extends Error {}",
+          "export const formatDiagnostic = (d) => d.message",
+        ].join("\n")
+      : undefined,
 })
 
 export default defineConfig({
-  plugins: [effscript(), tailwindcss(), routes(["playground"])],
+  plugins: [
+    effscript(),
+    // The documentation is docs/*.md, compiled to documents when the pages import it.
+    markdown(),
+    tailwindcss(),
+    compilerOnlyInTheBrowser(),
+    // Every page is prerendered to HTML, which GitHub Pages serves as static files.
+    prerender({ entry: "/src/server.efs" }),
+  ],
   worker: { format: "es", plugins: () => [effscript()] },
   build: { target: "es2022" },
   optimizeDeps: { exclude: ["@effscript/compiler"] },
+  server: { fs: { allow: [".."] } },
 })

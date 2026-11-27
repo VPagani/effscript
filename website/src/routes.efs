@@ -3,5 +3,9 @@ import { Route } from "@effect/ui";
 export const AppRoute = Route.union({
   Home: Route.make("/"),
   Playground: Route.make("/playground"),
+  Docs: Route.make("/docs"),
+  Doc: Route.make("/docs/:name", { params: { name: Schema.String } }),
   NotFound: Route.make("/*"),
 });
+
+export type AppRoute = typeof AppRoute.Type;

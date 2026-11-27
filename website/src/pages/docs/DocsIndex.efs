@@ -1,0 +1,66 @@
+// The documentation's overview, at /docs: every page, grouped, with its first paragraph.
+import { Html } from "@effect/ui/html";
+import { docPath, docs, groups, summary, title } from "../../lib/docs.efs";
+import { docHead } from "./DocPage.efs";
+import { mobileMenu, sidebar } from "./nav.efs";
+
+const blurbs: Record<string, string> = {
+  Guide: "Install EffScript and learn the language.",
+  Tools: "The efs command, its lint rules, editors and bundlers.",
+  Reference: "How EffScript fits with TypeScript, Effect and its own internals.",
+};
+
+const description = "The EffScript documentation: getting started, the language guide, the efs command, editors, bundlers and TypeScript interop.";
+
+export component DocsIndex {
+  head = () => docHead("Documentation", description);
+
+  view =>
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-12">
+      {sidebar(h, "")}
+      {mobileMenu(h, "", "Overview")}
+      <div class="min-w-0 pt-8 pb-20 lg:pt-12">
+        <div class="relative">
+          <div
+            aria-hidden="true"
+            class="pointer-events-none absolute -top-24 -left-10 h-64 w-[28rem] max-w-full rounded-full bg-gradient-to-tr from-violet-600/25 via-indigo-500/15 to-sky-400/15 blur-3xl"
+          />
+          <p class="relative text-sm font-medium text-violet-300">Documentation</p>
+          <h1 class="relative mt-3 text-4xl font-bold tracking-tight text-white sm:text-5xl">Learn EffScript</h1>
+          <p class="relative mt-5 max-w-2xl text-lg leading-8 text-zinc-300">
+            EffScript is a small language that compiles to the Effect code you would write by hand. Start with the guide, then reach for the tools and reference as you need them.
+          </p>
+          <div class="relative mt-8 flex flex-wrap gap-3">
+            <a
+              href="/docs/getting-started"
+              class="rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-zinc-950 shadow-lg shadow-violet-500/20 transition hover:bg-violet-100"
+            >
+              Get started
+            </a>
+            <a
+              href="/docs/language"
+              class="rounded-lg border border-white/15 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+            >
+              Read the language guide
+            </a>
+          </div>
+        </div>
+        {groups.map((group) =>
+          <section class="mt-16">
+            <h2 class="text-xl font-semibold tracking-tight text-white">{group}</h2>
+            <p class="mt-1 text-sm text-zinc-500">{blurbs[group]}</p>
+            <div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {docs.filter((d) => d.group == group).map((d) =>
+                <a
+                  href={docPath(d)}
+                  class="group flex flex-col rounded-xl border border-white/10 bg-gradient-to-b from-white/[0.04] to-transparent p-5 transition hover:border-violet-400/40"
+                >
+                  <span class="font-semibold text-white">{title(d)}</span>
+                  <span class="mt-2 line-clamp-3 text-sm leading-6 text-zinc-400">{summary(d)}</span>
+                  <span class="mt-auto pt-4 text-sm font-medium text-violet-300 group-hover:text-violet-200">Read →</span>
+                </a>)}
+            </div>
+          </section>)}
+      </div>
+    </div>
+}

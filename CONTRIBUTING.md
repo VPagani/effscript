@@ -46,6 +46,10 @@ WebAssembly compiler and start Vite:
 pnpm build:wasm && pnpm --filter @effscript/website dev
 ```
 
+The documentation pages (`/docs/...`) are the Markdown files in `docs/`, compiled when
+the site builds; edit those files, not the website. `vite build` prerenders every page to
+HTML with `website/src/server.efs`, and the browser hydrates it.
+
 When a change alters generated TypeScript or JavaScript on purpose, refresh the snapshots
 and review the diff:
 

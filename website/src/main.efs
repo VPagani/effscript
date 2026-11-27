@@ -1,11 +1,28 @@
 import { Router } from "@effect/ui";
-import { BrowserHost, BrowserRouter } from "@effect/ui/html";
+import { BrowserHost, BrowserRouter, HtmlHydrate } from "@effect/ui/html";
 import { App } from "./App.efs";
 import { AppRoute } from "./routes.efs";
+import { preload } from "./pages/lazy.efs";
 
 const root = document.getElementById("app")!;
 
-const Main = BrowserHost.mount(App, Router.props(AppRoute), root)
-  |> Layer.provide(BrowserRouter.layer({ routes: AppRoute }));
+// A prerendered page carries its state: on the path it was rendered for, the app adopts its
+// markup instead of building it again. A page loaded from its own chunk is loaded first, so
+// that it is adopted too. Elsewhere (404.html serves every unknown path) the app builds afresh.
+const state = document.getElementById("state")?.textContent;
 
-Effect.runFork(Layer.launch(Main));
+const prerendered = state != undefined && root.dataset.path == location.pathname;
+
+if !prerendered {
+  root.replaceChildren();
+}
+
+const hydrate = (state: string) =>
+  Effect.tryPromise(() => preload(location.pathname))
+    |> Effect.ignore
+    |> Effect.as(HtmlHydrate.hydrate(App, Router.props(AppRoute), root, JSON.parse(state)))
+    |> Layer.unwrap;
+
+const Main = prerendered && state != undefined ? hydrate(state) : BrowserHost.mount(App, Router.props(AppRoute), root);
+
+Effect.runFork(Layer.launch(Main |> Layer.provide(BrowserRouter.layer({ routes: AppRoute }))));

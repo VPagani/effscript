@@ -58,6 +58,7 @@ does not. Set `"fmt": { "semicolons": false }` in `efs.json` to drop them. See
 | `if c { a } else { b }` (as an expression) | `(c ? a : b)` |
 | `for x of xs { }`, `for let x of xs { }` | `for (const x of xs) { }`, `for (let x of xs) { }` |
 | `import { X } from "./x.efs"` | `import { X } from "./x.js"` |
+| `import("./x.efs")` | `import("./x.js")` |
 
 Everything else (objects, arrays, spread, destructuring, optional chaining,
 `??`, template strings, `as`, `satisfies`, `!`, `new`, `typeof`) is written as
