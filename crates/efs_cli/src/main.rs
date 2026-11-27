@@ -49,6 +49,10 @@ enum Command {
         /// Print diagnostics as JSON lines.
         #[arg(long)]
         json: bool,
+        /// Also report Effect Language Service diagnostics from effect-tsgo (`@effect/tsgo`).
+        /// Writes the build output next to each source file, as `efs build` does.
+        #[arg(long)]
+        effect: bool,
     },
     /// Format .efs files.
     Fmt {
@@ -145,7 +149,7 @@ fn main() -> ExitCode {
             }
             build(&paths, &cfg, &mut r);
         }
-        Command::Check { path, efs_only, json } => {
+        Command::Check { path, efs_only, json, effect } => {
             let start = path.unwrap_or_else(|| PathBuf::from("."));
             let cfg = config::Config::load(&start);
             let mut ws = efs_check::Workspace::discover(&start);
@@ -162,6 +166,18 @@ fn main() -> ExitCode {
                     continue;
                 }
                 diags.push(d);
+            }
+            if effect {
+                let root = session.workspace.root.clone();
+                match efs_check::effect_tsgo::find(&root) {
+                    Some(exe) => match session.effect_diagnostics(&exe) {
+                        Ok(found) => diags.extend(found.into_iter().filter(|d| !efs_only || d.file.as_ref().is_some_and(|f| f.extension().is_some_and(|e| e == "efs")))),
+                        Err(e) => r.error_line(&e),
+                    },
+                    None => r.error_line(
+                        "`--effect` needs effect-tsgo: install it with `npm install -D @effect/tsgo tsrs`, or set EFS_EFFECT_TSGO",
+                    ),
+                }
             }
             for d in &diags {
                 if json {

@@ -500,6 +500,33 @@ There are two ways to type check:
    Run `tsgo` or `tsrs` with `--runExternalCode`. To emit JavaScript through
    `tsc` this way, also enable `rewriteRelativeImportExtensions`.
 
+### Effect Language Service
+
+[effect-tsgo](https://github.com/Effect-TS/tsgo) (`@effect/tsgo`) is the
+Effect team's language service for TypeScript: about 150 Effect-specific
+diagnostics, with quick fixes and refactors. EffScript generates code that
+passes it, and works with it in two ways:
+
+- `efs check --effect` runs the project's `effect-tsgo` over the build output
+  (written next to each `.efs` file, as `efs build` does) and reports each
+  Effect diagnostic at its EffScript position. It enables the
+  `@effect/language-service` plugin for the run if your tsconfig does not.
+
+  ```bash
+  npm install -D @effect/tsgo tsrs
+  ```
+
+  ```bash
+  efs check --effect
+  ```
+
+- With the content mapper, run your editor or CLI through `effect-tsgo` (for
+  example `effect-tsgo tsrs --noEmit --runExternalCode`) and its
+  diagnostics apply to `.efs` files directly, like TypeScript's own.
+
+`efs lint` has its own versions of the rules that fit EffScript's syntax, so
+the most common ones show up as you type without effect-tsgo.
+
 ## Not supported
 
 - Classes, `async`/`await`, generators, decorators, `this`, regular expression

@@ -110,3 +110,36 @@ fn handwritten_typescript_is_never_shadowed() {
     assert_eq!(diags[0].code, "conflict");
     assert!(after.is_empty(), "{after:#?}");
 }
+
+#[test]
+fn effect_language_service_diagnostics_map_to_efs() {
+    let root = root();
+    let modules = root.join("examples/node_modules");
+    let Some(exe) = efs_check::effect_tsgo::find(&root.join("examples")) else {
+        eprintln!("skipping: effect-tsgo is not installed in examples/");
+        return;
+    };
+    let tmp = std::env::temp_dir().join(format!("efs-effect-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::write(
+        tmp.join("tsconfig.json"),
+        std::fs::read_to_string(root.join("examples/tsconfig.json"))
+            .unwrap()
+            .replace("\"include\": [\"src\"]", "\"include\": [\".\"]"),
+    )
+    .unwrap();
+    std::fs::copy(root.join("examples/package.json"), tmp.join("package.json")).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&modules, tmp.join("node_modules")).unwrap();
+    let src = "import { Effect, Layer } from \"effect\"\n\nexport const program = Effect.succeed(1)\n  with Layer.empty\n  with Layer.empty\n";
+    std::fs::write(tmp.join("main.efs"), src).unwrap();
+    let mut session = efs_check::Session::new(efs_check::Workspace::discover(&tmp));
+    let diags = session.effect_diagnostics(&exe).unwrap();
+    let leftover = tmp.join(".efs-effect.tsconfig.json").exists();
+    let _ = std::fs::remove_dir_all(&tmp);
+    let d = diags.iter().find(|d| d.code == "effect/multipleEffectProvide").unwrap_or_else(|| panic!("{diags:#?}"));
+    assert_eq!(d.file.as_ref().unwrap().file_name().unwrap(), "main.efs");
+    assert_eq!(d.line_col().map(|(l, _)| l), Some(2));
+    assert!(!leftover, "the temporary tsconfig was not removed");
+}

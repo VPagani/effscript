@@ -138,7 +138,7 @@ npm install && efs check && efs build && npx tsc && node dist/main.js
 | Command | What it does |
 | --- | --- |
 | `efs build [paths] [--out-dir D] [--source-map] [--watch]` | Compile `.efs` files to `.ts` (next to the source by default), with optional source maps. |
-| `efs check [path] [--efs-only] [--json]` | Type check the project with tsrs and report errors in EffScript coordinates. |
+| `efs check [path] [--efs-only] [--json] [--effect]` | Type check the project with tsrs and report errors in EffScript coordinates. `--effect` adds the Effect Language Service's diagnostics from [effect-tsgo](https://github.com/Effect-TS/tsgo). |
 | `efs fmt [paths] [--check] [--stdin]` | Format files. Idempotent, keeps comments, and never changes the compiled output. |
 | `efs lint [paths] [--deny-warnings] [--disable RULE] [--rules]` | Effect-aware lint rules (see below). |
 | `efs emit FILE [--span-map \| --source-map]` | Print the generated TypeScript, its span map or a source map. |

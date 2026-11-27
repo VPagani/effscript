@@ -4,11 +4,15 @@
   "type": "module",
   "scripts": {
     "build": "efs build",
-    "check": "efs check"
+    "check": "efs check --effect"
   },
   "dependencies": {
     "@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@9dc3482",
     "@typeonce/effect-machine": "0.47.1",
     "effect": "4.1.6"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "0.73.7",
+    "tsrs": "7.1.0-beta.tsrs5"
   }
 }

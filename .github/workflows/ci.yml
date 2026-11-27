@@ -38,5 +38,5 @@ jobs:
         run: |
           cargo run -q -p efs_cli -- fmt --check examples tests/fixtures
           cargo run -q -p efs_cli -- lint --deny-warnings examples tests/fixtures
-      - name: Type check the examples
-        run: cargo run -q -p efs_cli -- check examples
+      - name: Type check the examples, with Effect Language Service diagnostics
+        run: cargo run -q -p efs_cli -- check --effect examples
