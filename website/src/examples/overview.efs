@@ -1,0 +1,29 @@
+type User = { id: string, name: string };
+
+error UserNotFound { id: string }
+
+service Users {
+  find(id: string): Effect<User, UserNotFound>;
+}
+
+effect function greet(id: string) {
+  const users = use Users;
+  const user = run users.find(id)
+    |> Effect.retry(Schedule.recurs(2))
+    |> Effect.timeout("1 second");
+  run Console.log(`Hello, ${user.name}!`);
+  return user;
+}
+
+const ada: User = { id: "ada", name: "Ada Lovelace" };
+
+const UsersLive = Layer.succeed(Users, {
+  find: (id) => id == "ada" ? Effect.succeed(ada) : Effect.fail(new UserNotFound({ id })),
+});
+
+export const main = greet("ada")
+  catch {
+    UserNotFound(e) => Console.log(`No user ${e.id}`)
+    TimeoutError => Console.log("Too slow")
+  }
+  with UsersLive;

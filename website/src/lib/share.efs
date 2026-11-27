@@ -1,0 +1,26 @@
+// Playground sources in the URL: `#code=` followed by the UTF-8 source in base64url.
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+export const encode = (source: string): string =>
+  btoa(Array.from(encoder.encode(source), (b) => String.fromCharCode(b)).join(""))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+
+export const decode = (text: string): string | undefined => {
+  const base64 = text.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = Effect.try({ try: () => atob(base64), catch: () => "invalid" }) |> Effect.option |> Effect.runSync;
+  return Option.map(binary, (b) => decoder.decode(Uint8Array.from(b, (c) => c.charCodeAt(0))))
+    |> Option.getOrUndefined;
+};
+
+/** The source in the page's URL, if any. */
+export const sourceInUrl = (): string | undefined => {
+  const hash = globalThis.location?.hash ?? "";
+  return hash.startsWith("#code=") ? decode(hash.slice(6)) : undefined;
+};
+
+/** A link to the playground with `source`. */
+export const linkTo = (source: string): string =>
+  `${location.origin}/playground#code=${encode(source)}`;

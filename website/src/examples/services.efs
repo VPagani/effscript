@@ -1,0 +1,19 @@
+// Services are interfaces: `use` one in an effect, and provide an
+// implementation with `with`.
+service Greeter {
+  greet(name: string): Effect<string>;
+}
+
+const GreeterLive = Layer.succeed(Greeter, {
+  greet: (name) => Effect.succeed(`Hello, ${name}!`),
+});
+
+effect function welcome(names: string[]) {
+  const greeter = use Greeter;
+  for name of names {
+    const message = run greeter.greet(name);
+    run Console.log(message);
+  }
+}
+
+export const main = welcome(["Ada", "Grace", "Barbara"]) with GreeterLive;

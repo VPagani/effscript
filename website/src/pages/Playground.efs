@@ -1,0 +1,251 @@
+// The playground: write EffScript, see what it compiles to, and run it.
+import { Html } from "@effect/ui/html";
+import { Command, UiSchema } from "@effect/ui";
+import { compile, format, isLoaded, whenLoaded } from "../lib/compiler.efs";
+import { codeLines } from "../lib/code.efs";
+import { linkTo, sourceInUrl } from "../lib/share.efs";
+import { exampleById, examples } from "../examples.efs";
+
+schema OutputLine {
+  level: String
+  text: String
+}
+
+type Report = { type: "line", level: string, text: string } | { type: "done", ok: boolean };
+
+/** Runs compiled JavaScript in a fresh worker, reporting each console line. */
+const RunProgram = Command.make(
+  "RunProgram",
+  { args: { code: Schema.String }, stream: true, mode: "switch" },
+  ({ code }) =>
+    Stream.callback<typeof PlaygroundMessage.Type>((queue) => effect {
+      const worker = new Worker(new URL("../runner.efs", import.meta.url), { type: "module" });
+      defer Effect.sync(() => worker.terminate());
+      worker.onmessage = (event: MessageEvent<Report>) => {
+        const report = event.data;
+        if report.type == "line" {
+          Queue.offerUnsafe(queue, PlaygroundMessage.PrintedLine({ level: report.level, text: report.text }));
+        } else {
+          Queue.offerUnsafe(queue, PlaygroundMessage.FinishedRun({ ok: report.ok }));
+          Queue.endUnsafe(queue);
+        }
+      };
+      worker.onerror = (event) => {
+        Queue.offerUnsafe(queue, PlaygroundMessage.PrintedLine({ level: "error", text: event.message }));
+        Queue.offerUnsafe(queue, PlaygroundMessage.FinishedRun({ ok: false }));
+        Queue.endUnsafe(queue);
+      };
+      worker.postMessage({ code });
+    }),
+);
+
+const CopyLink = Command.make("CopyLink", { args: { url: Schema.String } }, ({ url }) =>
+  Effect.tryPromise(() => navigator.clipboard.writeText(url))
+    |> Effect.tap(() => Effect.sync(() => history.replaceState(null, "", url)))
+    |> Effect.match({
+      onSuccess: () => PlaygroundMessage.CopiedLink(),
+      onFailure: () => PlaygroundMessage.FailedCopyLink(),
+    }));
+
+const WaitBeforeHidingNotice = Command.make("WaitBeforeHidingNotice", {}, () =>
+  Effect.sleep("2 seconds") |> Effect.as(PlaygroundMessage.ExpiredNotice()));
+
+const tabs: { id: "ts" | "js" | "problems" | "output", label: string }[] = [
+  { id: "ts", label: "TypeScript" },
+  { id: "js", label: "JavaScript" },
+  { id: "problems", label: "Problems" },
+  { id: "output", label: "Output" },
+];
+
+const levelClass = (level: string): string =>
+  match level {
+    "error" => "text-red-400"
+    "warn" => "text-amber-300"
+    "info" => "text-sky-300"
+    "debug" => "text-zinc-500"
+    _ => "text-zinc-200"
+  };
+
+const lineCount = (source: string): number => source.split("\n").length;
+
+const button = "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition";
+const quiet = `${button} text-zinc-300 hover:bg-white/10 hover:text-white`;
+
+export component Playground {
+  let source: String = sourceInUrl() ?? examples[0]!.source;
+  let example: String = sourceInUrl() == undefined ? examples[0]!.id : "";
+  let tab: "ts" | "js" | "problems" | "output" = "ts";
+  let ready: Boolean = isLoaded();
+  let output: OutputLine[] = [];
+  let running: Boolean = false;
+  let notice: String = "";
+
+  update LoadedCompiler {
+    ready = true;
+  }
+
+  update EditedSource(text: String) {
+    source = text;
+  }
+
+  update PickedExample(id: String) {
+    example = id;
+    source = exampleById(id).source;
+    output = [];
+  }
+
+  update ClickedTab(name: "ts" | "js" | "problems" | "output") {
+    tab = name;
+  }
+
+  update ClickedFormat {
+    source = format(source);
+  }
+
+  update ClickedRun {
+    run RunProgram.make({ code: compile(source).js });
+    output = [];
+    running = true;
+    tab = "output";
+  }
+
+  update ClickedStop {
+    run Command.interrupt(RunProgram);
+    running = false;
+    output = [...output, { level: "warn", text: "Stopped." }];
+  }
+
+  update PrintedLine(level: String, text: String) {
+    output = [...output, { level, text }];
+  }
+
+  update FinishedRun(ok: Boolean) {
+    running = false;
+    if !ok {
+      tab = "output";
+    }
+  }
+
+  update ClickedShare {
+    run CopyLink.make({ url: linkTo(source) });
+  }
+
+  update CopiedLink {
+    run WaitBeforeHidingNotice.make({});
+    notice = "Link copied to the clipboard";
+  }
+
+  update FailedCopyLink {
+    run WaitBeforeHidingNotice.make({});
+    notice = "Couldn't copy the link";
+  }
+
+  update ExpiredNotice {
+    notice = "";
+  }
+
+  subscriptions = ({ model }) => model.ready ? [] : [whenLoaded(PlaygroundMessage.LoadedCompiler())];
+
+  view =>
+    <section class="flex h-[calc(100dvh-4rem)] flex-col bg-[#0d1117]">
+      <div class="flex flex-wrap items-center gap-2 border-b border-white/10 bg-zinc-950 px-3 py-2">
+        <label class="sr-only" for="example">Example</label>
+        <select
+          id="example"
+          class="h-8 rounded-md border border-white/10 bg-zinc-900 px-2 text-sm text-zinc-200 outline-none focus:border-violet-400"
+          on:change={({ value }) => PickedExample({ id: value })}
+        >
+          {example == "" ? <option value="" selected>Shared code</option> : null}
+          {examples.map((e) => <option value={e.id} selected={e.id == example}>{e.title}</option>)}
+        </select>
+        <button type="button" class={quiet} on:click={ClickedFormat}>Format</button>
+        <button type="button" class={quiet} on:click={ClickedShare}>Share</button>
+        <span class="text-sm text-emerald-300" role="status">{notice}</span>
+        <div class="ml-auto flex items-center gap-2">
+          {running ? <button
+            type="button"
+            class={`${button} bg-red-500/90 text-white hover:bg-red-500`}
+            on:click={ClickedStop}
+          >
+            Stop
+          </button> : <button
+            type="button"
+            class={`${button} bg-violet-500 text-white hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40`}
+            disabled={!ready || compile(source).diagnostics.some((d) => d.severity == "error")}
+            on:click={ClickedRun}
+          >
+            Run
+          </button>}
+        </div>
+      </div>
+      <div class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-rows-1">
+        <div class="relative min-h-0 min-w-0 overflow-auto border-white/10 lg:border-r">
+          <div class="flex min-h-full min-w-max font-mono text-[13px] leading-6">
+            <div
+              aria-hidden="true"
+              class="sticky left-0 z-10 select-none bg-[#0d1117] py-4 pr-3 pl-4 text-right text-[#6e7681]"
+            >
+              {Array.from({ length: lineCount(source) }, (_, i) =>
+                <div
+                  class={[
+                    "h-6",
+                    compile(source).diagnostics.some((d) => d.line == i + 1 && d.severity == "error") && "text-red-400",
+                  ]}
+                >
+                  {String(i + 1)}
+                </div>)}
+            </div>
+            <div class="relative flex-1">
+              <pre aria-hidden="true" class="pointer-events-none py-4 pr-8 pl-2 text-[#e6edf3]">{codeLines(h, source, "efs")}</pre>
+              <textarea
+                class="absolute inset-0 h-full w-full resize-none overflow-hidden bg-transparent py-4 pr-8 pl-2 whitespace-pre text-transparent caret-white outline-none selection:bg-violet-400/30"
+                aria-label="EffScript source"
+                spellcheck="false"
+                autocapitalize="off"
+                autocomplete="off"
+                wrap="off"
+                value={source}
+                on:input={({ value }) => EditedSource({ text: value })}
+              />
+            </div>
+          </div>
+        </div>
+        <div class="flex min-h-0 min-w-0 flex-col border-t border-white/10 lg:border-t-0">
+          <div class="flex gap-1 border-b border-white/10 px-2 pt-2" role="tablist">
+            {tabs.map((t) =>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={t.id == tab ? "true" : "false"}
+                class={[
+                  "rounded-t-md px-3 py-1.5 text-sm transition",
+                  t.id == tab ? "bg-white/10 text-white" : "text-zinc-400 hover:text-zinc-200",
+                ]}
+                on:click={ClickedTab({ name: t.id })}
+              >
+                {t.label}
+                {t.id == "problems" && compile(source).diagnostics.length > 0 ? <span class="ml-1.5 rounded-full bg-red-500/20 px-1.5 text-xs text-red-300">
+                  {String(compile(source).diagnostics.length)}
+                </span> : null}
+              </button>)}
+          </div>
+          <div class="min-h-0 flex-1 overflow-auto">
+            {!ready ? <p class="p-5 text-sm text-zinc-400">Loading the compiler…</p> : tab == "ts" ? <pre class="p-4 font-mono text-[13px] leading-6 text-[#e6edf3]">{codeLines(h, compile(source).ts, "ts")}</pre> : tab == "js" ? <pre class="p-4 font-mono text-[13px] leading-6 text-[#e6edf3]">{codeLines(h, compile(source).js, "js")}</pre> : tab == "problems" ? compile(source).diagnostics.length == 0 ? <p class="p-5 text-sm text-zinc-400">No problems.</p> : <ul class="divide-y divide-white/5 font-mono text-[13px]">
+              {compile(source).diagnostics.map((d) =>
+                <li class="flex gap-3 px-4 py-2">
+                  <span class={d.severity == "error" ? "text-red-400" : "text-amber-300"}>
+                    {`${d.line}:${d.column}`}
+                  </span>
+                  <span class="text-zinc-200">{d.message}</span>
+                  <span class="ml-auto shrink-0 text-zinc-500">{d.code}</span>
+                </li>)}
+            </ul> : output.length == 0 ? <p class="p-5 text-sm text-zinc-400">
+              {running ? "Running…" : "Press Run to run the program's exported `main` effect."}
+            </p> : <pre class="p-4 font-mono text-[13px] leading-6 whitespace-pre-wrap">
+              {output.map((l) => <div class={levelClass(l.level)}>{l.text}</div>)}
+            </pre>}
+          </div>
+        </div>
+      </div>
+    </section>
+}

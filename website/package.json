@@ -1,0 +1,24 @@
+{
+  "name": "@effscript/website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "efs check"
+  },
+  "dependencies": {
+    "@effect/ui": "https://pkg.pr.new/Effect-TS/ui/@effect/ui@9dc3482",
+    "@effscript/compiler": "workspace:*",
+    "@typeonce/effect-machine": "0.47.1",
+    "effect": "4.1.6",
+    "shiki": "^4.6.0"
+  },
+  "devDependencies": {
+    "@effscript/vite": "workspace:*",
+    "@tailwindcss/vite": "^4.3.5",
+    "tailwindcss": "^4.3.5",
+    "vite": "^8.4.0"
+  }
+}

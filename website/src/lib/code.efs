@@ -1,0 +1,15 @@
+// Highlighted code, rendered as markup.
+import { Html } from "@effect/ui/html";
+import { highlight } from "./highlight.efs";
+import type { Lang, Token } from "./highlight.efs";
+
+const token = <M>(h: Html.H<M>, t: Token) =>
+  <span style={{ color: t.color, fontStyle: t.italic ? "italic" : "normal" }}>{t.content}</span>;
+
+/** The highlighted lines of `code`, one block per line. */
+export const codeLines = <M>(h: Html.H<M>, code: string, lang: Lang) =>
+  highlight(code, lang).map((line) => <span class="block min-h-6 pr-4">{line.map((t) => token(h, t))}</span>);
+
+/** A read-only code block. */
+export const codeBlock = <M>(h: Html.H<M>, code: string, lang: Lang) =>
+  <pre class="overflow-x-auto p-5 font-mono text-[13px] leading-6 text-[#e6edf3]"><code>{codeLines(h, code, lang)}</code></pre>;

@@ -2,7 +2,9 @@ packages:
   - packages/*
   - examples
   - editors/vscode
+  - website
 
 # Packages whose install scripts may run (esbuild checks its platform binary).
 onlyBuiltDependencies:
   - esbuild
+  - '@tailwindcss/oxide'

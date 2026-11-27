@@ -1,0 +1,13 @@
+// Schemas are written as types, and decode unknown data.
+schema User {
+  name: String
+  email?: String
+  roles: ("admin" | "member")[]
+}
+
+const input: unknown = { name: "Ada", roles: ["admin"] };
+
+export const main = effect {
+  const user = run Schema.decodeUnknownEffect(User)(input);
+  run Console.log(`${user.name} is ${user.roles.join(", ")}`);
+};

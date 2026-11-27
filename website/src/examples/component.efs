@@ -1,0 +1,26 @@
+// An Effect UI component, with JSX-like markup.
+import { Html } from "@effect/ui/html";
+import { UiSchema } from "@effect/ui";
+
+export component Counter {
+  prop label: String;
+  let count: Number = 0;
+  event Reset;
+
+  update ClickedIncrement(amount: Number) {
+    count += amount;
+  }
+
+  update ClickedReset {
+    count = 0;
+    emit Reset();
+  }
+
+  view =>
+    <div class="counter">
+      <h2>{label}</h2>
+      <p>Count: {String(count)}</p>
+      <button on:click={ClickedIncrement({ amount: 1 })}>Add one</button>
+      <button disabled={count == 0} on:click={ClickedReset}>Reset</button>
+    </div>
+}

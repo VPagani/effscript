@@ -1,0 +1,24 @@
+// The example programs, shown on the home page and in the playground.
+import overview from "./examples/overview.efs?raw";
+import hello from "./examples/hello.efs?raw";
+import errors from "./examples/errors.efs?raw";
+import services from "./examples/services.efs?raw";
+import schema from "./examples/schema.efs?raw";
+import match from "./examples/match.efs?raw";
+import machine from "./examples/machine.efs?raw";
+import component from "./examples/component.efs?raw";
+
+export type Example = { id: string, title: string, source: string, runnable: boolean };
+
+export const examples: Example[] = [
+  { id: "overview", title: "Overview", source: overview, runnable: true },
+  { id: "hello", title: "Effects", source: hello, runnable: true },
+  { id: "errors", title: "Errors", source: errors, runnable: true },
+  { id: "services", title: "Services", source: services, runnable: true },
+  { id: "schema", title: "Schemas", source: schema, runnable: true },
+  { id: "match", title: "Matching", source: match, runnable: true },
+  { id: "machine", title: "State machines", source: machine, runnable: false },
+  { id: "component", title: "Components", source: component, runnable: false },
+];
+
+export const exampleById = (id: string): Example => examples.find((e) => e.id == id) ?? examples[0]!;

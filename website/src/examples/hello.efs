@@ -1,0 +1,9 @@
+// `effect function` and `run` work like `async function` and `await`.
+effect function greet(name: string) {
+  run Console.log(`Hello, ${name}!`);
+  const now = run DateTime.now;
+  return `greeted ${name} at ${DateTime.formatIso(now)}`;
+}
+
+export const main = greet("Ada")
+  |> Effect.tap((message) => Console.log(message));

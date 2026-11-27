@@ -1,0 +1,11 @@
+import { Router } from "@effect/ui";
+import { BrowserHost, BrowserRouter } from "@effect/ui/html";
+import { App } from "./App.efs";
+import { AppRoute } from "./routes.efs";
+
+const root = document.getElementById("app")!;
+
+const Main = BrowserHost.mount(App, Router.props(AppRoute), root)
+  |> Layer.provide(BrowserRouter.layer({ routes: AppRoute }));
+
+Effect.runFork(Layer.launch(Main));

@@ -1,0 +1,90 @@
+// A Web Worker that runs a compiled playground program and reports its console output.
+import * as effect from "effect";
+
+type Level = "log" | "info" | "warn" | "error" | "debug";
+
+type Report = { type: "line", level: Level, text: string } | { type: "done", ok: boolean };
+
+const scope = self as unknown as {
+  postMessage(report: Report): void
+  onmessage: ((event: { data: { code: string } }) => void) | null
+};
+
+const show = (value: unknown): string => {
+  if typeof value == "string" {
+    return value;
+  }
+  if value instanceof Error {
+    return value.stack ?? value.message;
+  }
+  if typeof value == "object" && value != null {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  }
+  return String(value);
+};
+
+const print = (level: Level, text: string) => scope.postMessage({ type: "line", level, text });
+
+const levels: Level[] = ["log", "info", "warn", "error", "debug"];
+for level of levels {
+  console[level] = (...args: unknown[]) => print(level, args.map(show).join(" "));
+}
+
+const importsFromEffect = new RegExp("^import\\s*\\{([^}]*)\\}\\s*from\\s*[\"']effect[\"'];?\\s*$", "gm");
+const otherImports = new RegExp("^import\\s.*?from\\s*[\"']([^\"']+)[\"'];?\\s*$", "m");
+const alias = new RegExp("\\s+as\\s+", "g");
+const exported = new RegExp("^export\\s+(const|let|function|class)\\s", "gm");
+const exportList = new RegExp("^export\\s*\\{[^}]*\\};?\\s*$", "gm");
+
+/** The module that `code` imports other than `effect`, if any: the playground can't load it. */
+const unsupportedImport = (code: string): string | undefined => otherImports.exec(code.replace(importsFromEffect, ""))?.[1];
+
+/** Turns the compiled module into a function body that returns `main`. */
+const toBody = (code: string): string => {
+  const bindings = code.replace(
+    importsFromEffect,
+    (_line: string, names: string) => `const { ${names.replace(alias, ": ")} } = __effect;`,
+  );
+  const body = bindings.replace(exported, "$1 ").replace(exportList, "");
+  return `${body}\nreturn typeof main === "undefined" ? undefined : main;`;
+};
+
+const finish = (ok: boolean) => scope.postMessage({ type: "done", ok });
+
+const execute = (code: string) => {
+  const unsupported = unsupportedImport(code);
+  if unsupported != undefined {
+    print("warn", `The playground runs programs that import only \`effect\`; this one imports \`${unsupported}\`.`);
+    finish(false);
+    return;
+  }
+  const main: unknown = new Function("__effect", toBody(code))(effect);
+  if main == undefined {
+    print("warn", "Nothing to run: export a `main` effect.");
+    finish(true);
+  } else if Effect.isEffect(main) {
+    Effect.runPromiseExit(main as Effect<unknown, unknown>).then((exit) => {
+      if Exit.isSuccess(exit) {
+        if exit.value != undefined {
+          print("info", `main succeeded with ${show(exit.value)}`);
+        }
+        finish(true);
+      } else {
+        print("error", Cause.pretty(exit.cause));
+        finish(false);
+      }
+    });
+  } else {
+    print("info", show(main));
+    finish(true);
+  }
+};
+
+scope.onmessage = (event) =>
+  Effect.try({ try: () => execute(event.data.code), catch: (cause) => cause })
+    |> Effect.catch((cause) =>
+      Effect.sync(() => {
+        print("error", show(cause));
+        finish(false);
+      }))
+    |> Effect.runSync;

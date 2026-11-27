@@ -6,7 +6,7 @@
 set -euo pipefail
 
 TYPES="feat|fix|perf|refactor|docs|test|build|ci|chore|revert"
-SCOPES="lang|syntax|codegen|check|fmt|lint|lsp|mapper|cli|wasm|plugins|editor|npm|examples|docs|ci|deps"
+SCOPES="lang|syntax|codegen|check|fmt|lint|lsp|mapper|cli|wasm|plugins|editor|npm|website|examples|docs|ci|deps"
 HEADER="^(${TYPES})(\((${SCOPES})(,(${SCOPES}))*\))?!?: [^ ].*[^.]$"
 
 check() {

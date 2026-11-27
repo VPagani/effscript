@@ -1,0 +1,21 @@
+// Tagged unions with `enum`, and exhaustive `match`.
+enum Shape {
+  Circle { radius: number }
+  Square { side: number }
+  Point
+}
+
+const area = (shape: Shape): number =>
+  match shape {
+    Circle({ radius }) => Math.PI * radius ** 2
+    Square({ side }) => side * side
+    Point => 0
+  };
+
+const shapes = [Shape.Circle({ radius: 1 }), Shape.Square({ side: 2 }), Shape.Point()];
+
+export const main = effect {
+  for shape of shapes {
+    run Console.log(`${shape._tag}: ${area(shape).toFixed(2)}`);
+  }
+};

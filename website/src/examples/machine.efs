@@ -1,0 +1,26 @@
+// A statechart with @typeonce/effect-machine.
+import { Machine } from "@typeonce/effect-machine";
+
+export machine Toggle {
+  root { flips: Number = 0 }
+  events {
+    Flip
+    Reset
+  }
+
+  initial state Off {
+    on Flip -> On;
+  }
+  state On {
+    on Flip -> Off;
+    after "5 seconds" -> Off;
+  }
+
+  on Flip update root { flips: root.flips + 1 };
+  on Reset -> Off;
+}
+
+export const main = effect {
+  const toggle = run Machine.start(Toggle);
+  run toggle.send(ToggleEvents.Flip());
+} |> Effect.scoped;

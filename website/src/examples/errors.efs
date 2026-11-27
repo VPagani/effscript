@@ -1,0 +1,21 @@
+// Typed errors: declare them with `error`, raise them with `fail`,
+// and handle them by tag with `catch`.
+error UserNotFound { id: string }
+error Banned { reason: string }
+
+effect function findUser(id: string) {
+  if id == "mallory" {
+    fail new Banned({ reason: "too many requests" });
+  }
+  if id != "ada" {
+    fail new UserNotFound({ id });
+  }
+  return { id, name: "Ada Lovelace" };
+}
+
+export const main = findUser("grace")
+  |> Effect.tap((user) => Console.log(`Found ${user.name}`))
+  catch {
+    UserNotFound(e) => Console.log(`No user with id ${e.id}`)
+    Banned(e) => Console.log(`Banned: ${e.reason}`)
+  };

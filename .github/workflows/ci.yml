@@ -39,9 +39,13 @@ jobs:
       - run: cargo test --workspace
       - name: EffScript sources are formatted and lint-clean
         run: |
-          cargo run -q -p efs_cli -- fmt --check examples tests/fixtures packages/bundler-tests/src
-          cargo run -q -p efs_cli -- lint --deny-warnings examples tests/fixtures packages/bundler-tests/src
+          cargo run -q -p efs_cli -- fmt --check examples tests/fixtures packages/bundler-tests/src website/src
+          cargo run -q -p efs_cli -- lint --deny-warnings examples tests/fixtures packages/bundler-tests/src website/src
       - name: Type check the examples, with Effect Language Service diagnostics
         run: cargo run -q -p efs_cli -- check --effect examples
       - name: Build with every bundler plugin and run the output
         run: pnpm test:bundlers
+      - name: Type check and build the website
+        run: |
+          cargo run -q -p efs_cli -- check website
+          pnpm --filter @effscript/website build

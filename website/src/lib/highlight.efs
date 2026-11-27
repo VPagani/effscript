@@ -1,0 +1,38 @@
+// Syntax highlighting with shiki and the VS Code extension's TextMate grammar.
+import { createHighlighterCoreSync } from "shiki/core";
+import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
+import typescript from "shiki/langs/typescript.mjs";
+import javascript from "shiki/langs/javascript.mjs";
+import theme from "shiki/themes/github-dark-default.mjs";
+import grammar from "../../../editors/vscode/syntaxes/efs.tmLanguage.json";
+
+export type Lang = "efs" | "ts" | "js";
+
+export type Token = { content: string, color: string, italic: boolean };
+
+const highlighter = createHighlighterCoreSync({
+  themes: [theme],
+  langs: [...typescript, ...javascript, { ...grammar, name: "efs" }],
+  engine: createJavaScriptRegexEngine({ forgiving: true }),
+});
+
+const names = { efs: "efs", ts: "typescript", js: "javascript" };
+
+const cache = new Map<string, Token[][]>();
+
+/** The tokens of each line of `code`. Results are cached, so views can call it on every render. */
+export const highlight = (code: string, lang: Lang): Token[][] => {
+  const key = `${lang}\u0000${code}`;
+  const hit = cache.get(key);
+  if hit != undefined {
+    return hit;
+  }
+  const result = highlighter.codeToTokens(code, { lang: names[lang], theme: "github-dark-default" });
+  const lines = result.tokens.map((line) =>
+    line.map((t) => ({ content: t.content, color: t.color ?? "#e6edf3", italic: ((t.fontStyle ?? 0) & 1) == 1 })));
+  if cache.size > 200 {
+    cache.clear();
+  }
+  cache.set(key, lines);
+  return lines;
+};

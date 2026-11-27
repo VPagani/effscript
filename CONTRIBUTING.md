@@ -28,7 +28,7 @@ cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 ```bash
-cargo run -q -p efs_cli -- fmt --check examples tests/fixtures && cargo run -q -p efs_cli -- lint --deny-warnings examples tests/fixtures
+cargo run -q -p efs_cli -- fmt --check examples tests/fixtures website/src && cargo run -q -p efs_cli -- lint --deny-warnings examples tests/fixtures website/src
 ```
 
 The bundler plugins are tested by building a small app with each bundler and
@@ -36,6 +36,14 @@ running the output:
 
 ```bash
 pnpm test:bundlers
+```
+
+The website (`website/`) is written in EffScript with Effect UI and Tailwind
+CSS, and deploys to GitHub Pages from `main`. To work on it, build the
+WebAssembly compiler and start Vite:
+
+```bash
+pnpm build:wasm && pnpm --filter @effscript/website dev
 ```
 
 When a change alters generated TypeScript or JavaScript on purpose, refresh the snapshots
@@ -87,6 +95,7 @@ with a scope:
 | `fmt`, `lint`, `lsp`, `mapper`, `cli` | The crate of the same name. |
 | `wasm` | The WebAssembly compiler (`crates/efs_wasm`, `@effscript/compiler`). |
 | `plugins` | The bundler plugins (`packages/*`). |
+| `website` | The website and playground (`website/`). |
 | `editor` | The VS Code extension. |
 | `npm` | The `effscript` npm package (the CLI launcher). |
 | `examples`, `docs`, `ci`, `deps` | Examples, documentation, CI and dependency updates. |

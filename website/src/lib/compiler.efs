@@ -1,0 +1,44 @@
+// The EffScript compiler, running as WebAssembly.
+import { init } from "@effscript/compiler/browser";
+import type { Compiler, Diagnostic as CompilerDiagnostic } from "@effscript/compiler/browser";
+import { Subscription } from "@effect/ui";
+
+export type Diagnostic = CompilerDiagnostic;
+
+let loaded: Compiler | undefined = undefined;
+
+const ready = init().then((c) => {
+  loaded = c;
+  return c;
+});
+
+/** A subscription that sends `message` once the compiler has loaded. */
+export const whenLoaded = <M>(message: M) =>
+  Subscription.make("LoadCompiler", Stream.fromEffect(Effect.promise(() => ready)) |> Stream.map(() => message));
+
+export const isLoaded = (): boolean => loaded != undefined;
+
+export type Output = { ts: string, js: string, diagnostics: Diagnostic[] };
+
+const empty: Output = { ts: "", js: "", diagnostics: [] };
+
+let last = { source: "", output: empty };
+
+/** Compiles `source` to TypeScript and JavaScript; empty until the compiler has loaded. */
+export const compile = (source: string): Output => {
+  if loaded == undefined {
+    return empty;
+  }
+  if last.source == source && last.output != empty {
+    return last.output;
+  }
+  const ts = loaded.compile(source, { target: "ts", sourceMap: false });
+  const js = loaded.compile(source, { target: "js", sourceMap: false });
+  const lint = loaded.lint(source);
+  const output = { ts: ts.code, js: js.code, diagnostics: [...ts.diagnostics, ...lint.diagnostics] };
+  last = { source, output };
+  return output;
+};
+
+/** Formats `source`, or returns it unchanged when it does not parse. */
+export const format = (source: string): string => loaded?.format(source).code ?? source;
