@@ -46,9 +46,8 @@ code generator adopts it and the supported minimum is raised in this table.
 
 New Effect features that need syntax (as `Effect.fn` needed
 `effect function`) are added to the language in a minor EffScript release.
-Syntax is only removed in an EffScript major, with an error that names the
-replacement, as with `initial state` and the `layer` declarations that
-gave way to Effect's own `Layer` API.
+After the first stable release, syntax is only removed in an EffScript
+major.
 
 **Pre-1.0 libraries.** `@typeonce/effect-machine` and Effect UI change faster
 than Effect itself. Their syntax in EffScript (`machine`, `component`) is

@@ -20,30 +20,6 @@ pub fn parse(src: &str) -> ParseResult {
     ParseResult { module, comments: p.comments.into_values().collect(), diagnostics: p.diags }
 }
 
-/// Where a function with a body is written, for the message about the removed `= expr` body.
-enum FnForm<'a> {
-    /// `function name(...)`
-    Decl(&'a str),
-    /// `function (...)`
-    Expr,
-    /// `name(...)` in an object literal.
-    Method(&'a str),
-}
-
-/// The error for `function f(x) = expr`, with the code to write instead. `sig` is the
-/// signature as written: type parameters, parameters and return type.
-fn removed_expr_body(effect: bool, sig: &str, form: &FnForm) -> String {
-    let fix = match (form, effect) {
-        (FnForm::Decl(name), false) => format!("`const {name} = {sig} => ...`"),
-        (FnForm::Decl(name), true) => format!("a block: `effect function {name}{sig} {{ return ...; }}`"),
-        (FnForm::Expr, false) => format!("an arrow function: `{sig} => ...`"),
-        (FnForm::Expr, true) => format!("an arrow function: `effect {sig} => ...`"),
-        (FnForm::Method(key), false) => format!("`{key}: {sig} => ...` or a block: `{key}{sig} {{ return ...; }}`"),
-        (FnForm::Method(key), true) => format!("a block: `effect {key}{sig} {{ return ...; }}`"),
-    };
-    format!("`= expr` function bodies were removed; write {fix}")
-}
-
 /// Parses a single expression (used by tests and tooling).
 pub fn parse_expr(src: &str) -> (Expr, Vec<Diagnostic>) {
     let mut p = Parser::new(src);
@@ -362,9 +338,6 @@ impl<'a> Parser<'a> {
         if self.is_kw_then_ident("service") {
             return ItemKind::Service(self.service());
         }
-        if self.is_kw_then_ident("layer") && self.is_n(2, "for") {
-            return ItemKind::Let(self.removed_layer());
-        }
         if self.is_kw_then_ident("error") {
             return ItemKind::Error(self.error_decl());
         }
@@ -496,31 +469,18 @@ impl<'a> Parser<'a> {
         let start = self.start();
         self.expect("function");
         let name = self.ident();
-        let func = self.func_rest(effect, start, FnForm::Decl(&name.name));
+        let func = self.func_rest(effect, start);
         FnDecl { name, func }
     }
 
     /// Parses `<T>(params): Ret { body }`.
-    fn func_rest(&mut self, effect: bool, start: u32, form: FnForm) -> Func {
-        let sig_start = self.peek().span.start;
+    fn func_rest(&mut self, effect: bool, start: u32) -> Func {
         let type_params = self.type_params();
         let params = self.params();
         let ret = if self.eat(":") { Some(self.ty()) } else { None };
         let saved = std::mem::replace(&mut self.in_effect, effect);
         let saved_update = std::mem::replace(&mut self.in_update, false);
-        let body = if self.is("=") {
-            // The removed `function f(x) = expr` form: report it with its replacement and
-            // read the expression as `{ return expr }`.
-            let sig = Span::new(sig_start, self.prev_end.max(sig_start)).text(self.src).trim().to_string();
-            let eq = self.bump();
-            let sig = if sig.len() <= 60 && !sig.contains('\n') { sig } else { "(...)".to_string() };
-            self.error(eq.span, removed_expr_body(effect, &sig, &form));
-            let value = self.expr();
-            let span = value.span;
-            FuncBody::Block(Block { stmts: vec![Stmt { kind: StmtKind::Return(Some(value)), span }], span })
-        } else {
-            FuncBody::Block(self.block())
-        };
+        let body = FuncBody::Block(self.block());
         self.in_effect = saved;
         self.in_update = saved_update;
         Func { effect, arrow: false, type_params, params, ret, body, span: self.span_from(start) }
@@ -634,36 +594,6 @@ impl<'a> Parser<'a> {
         };
         let members = self.type_members();
         Service { name, key, members }
-    }
-
-    /// The removed `layer Name for Service { ... }` and `layer Name for Service = value`
-    /// declarations: reports them with the Layer API call that replaces them, and reads them
-    /// as `const Name = <body>` so that later diagnostics still see the name.
-    fn removed_layer(&mut self) -> LetDecl {
-        let start = self.start();
-        self.expect("layer");
-        let name = self.ident();
-        self.expect("for");
-        let service = self.postfix_expr(false);
-        let head = self.span_from(start);
-        let s = service.name_path().unwrap_or_else(|| "Service".into());
-        let n = &name.name;
-        let init = if self.eat("=") {
-            let value = self.expr();
-            let v = if matches!(value.kind, ExprKind::Object(_)) { "{ ... }" } else { "value" };
-            self.error(head, format!("`layer` declarations were removed; write `const {n} = Layer.succeed({s}, {v})`"));
-            value
-        } else {
-            self.error(
-                head,
-                format!("`layer` declarations were removed; write `const {n} = Layer.effect({s}, effect {{ ... }})`"),
-            );
-            let bstart = self.start();
-            let b = self.effect_block();
-            Expr { kind: ExprKind::EffectBlock(b), span: self.span_from(bstart) }
-        };
-        let pattern = Pattern { span: name.span, kind: PatternKind::Ident(name) };
-        LetDecl { kind: LetKind::Const, pattern, ty: None, init: Some(init) }
     }
 
     fn error_decl(&mut self) -> ErrorDecl {
@@ -814,17 +744,6 @@ impl<'a> Parser<'a> {
 
     /// Parses one entry of a state body. Returns false if nothing matched.
     fn state_body_entry(&mut self, body: &mut StateBody) -> bool {
-        if self.is("initial") && !(self.is_n(1, "state") || self.is_n(1, "final") || self.is_n(1, "parallel")) {
-            let t = self.bump();
-            let target = self.peek();
-            let name = self.text(target).to_string();
-            self.error(
-                t.span,
-                format!("mark the state itself instead: `initial state {name}`, with its data as field defaults"),
-            );
-            self.target_after_arrow(false);
-            return true;
-        }
         if self.is("state") || self.is("final") || self.is("parallel") || self.is("initial") {
             let start = self.start();
             let mut is_final = false;
@@ -1007,18 +926,6 @@ impl<'a> Parser<'a> {
                 self.bump();
                 self.bump();
                 MemberKind::View(self.expr())
-            } else if ["props", "model", "msg", "messages", "events"].iter().any(|k| self.is(k)) && self.is_n(1, "{") {
-                let t = self.peek();
-                let hint = match self.text(t) {
-                    "props" => "declare each prop on its own line: `prop label: String`",
-                    "model" => "declare each model field with `let`: `let count: Number = 0`",
-                    "events" => "declare each event on its own line: `event Saved(note: Note)`",
-                    _ => "messages are declared by their `update`: `update ClickedAdd(amount: Number) { ... }`",
-                };
-                self.error(t.span, format!("`{} {{ }}` is no longer supported; {hint}", self.text(t)));
-                self.bump();
-                self.skip_braces();
-                continue;
             } else if self.is_ident() && self.is_n(1, "=") {
                 let key = self.ident();
                 self.bump();
@@ -1052,22 +959,6 @@ impl<'a> Parser<'a> {
         };
         let default = if self.eat("=") { Some(self.expr()) } else { None };
         SchemaField { name, optional, value, default, span: self.span_from(start) }
-    }
-
-    /// Skips a balanced `{ ... }` group (error recovery).
-    fn skip_braces(&mut self) {
-        if !self.eat("{") {
-            return;
-        }
-        let mut depth = 1;
-        while depth > 0 && !self.at_eof() {
-            if self.is("{") {
-                depth += 1;
-            } else if self.is("}") {
-                depth -= 1;
-            }
-            self.bump();
-        }
     }
 
     // ---------------------------------------------------------------------------------------
@@ -1748,7 +1639,7 @@ impl<'a> Parser<'a> {
                 "effect" if self.is_n(1, "function") => {
                     self.bump();
                     self.bump();
-                    let f = self.func_rest(true, start, FnForm::Expr);
+                    let f = self.func_rest(true, start);
                     return Expr { kind: ExprKind::Func(Box::new(f)), span: self.span_from(start) };
                 }
                 "effect"
@@ -1784,7 +1675,7 @@ impl<'a> Parser<'a> {
                 }
                 "function" if self.is_n(1, "(") || self.is_n(1, "<") => {
                     self.bump();
-                    let f = self.func_rest(false, start, FnForm::Expr);
+                    let f = self.func_rest(false, start);
                     return Expr { kind: ExprKind::Func(Box::new(f)), span: self.span_from(start) };
                 }
                 "if" => return self.if_expr(),
@@ -1889,8 +1780,7 @@ impl<'a> Parser<'a> {
                 }
                 let key = self.prop_key();
                 if self.is("(") || self.is("<") {
-                    let key_text = key.span().text(self.src).to_string();
-                    let func = self.func_rest(effect, fstart, FnForm::Method(&key_text));
+                    let func = self.func_rest(effect, fstart);
                     props.push(Prop::Method { key, func });
                 } else if self.eat(":") {
                     props.push(Prop::KeyValue { key, value: self.expr() });

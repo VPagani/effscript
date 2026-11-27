@@ -51,12 +51,6 @@ fn model_fields_need_initial_values() {
 }
 
 #[test]
-fn old_block_syntax_explains_the_new_one() {
-    let e = errors("  model { n: Number }");
-    assert!(has(&e, "declare each model field with `let`"), "{e:?}");
-}
-
-#[test]
 fn ambiguous_names() {
     let e = errors("  prop n: Number\n  let n: Number = 0\n  update Clicked(n: Number) => $.model\n  event Clicked");
     assert!(has(&e, "already declared as a prop"), "{e:?}");
@@ -70,8 +64,6 @@ fn machine_errors(body: &str) -> Vec<String> {
 
 #[test]
 fn initial_state_rules() {
-    let e = machine_errors("  initial A\n  state A");
-    assert!(has(&e, "mark the state itself instead: `initial state A`"), "{e:?}");
     let e = machine_errors("  initial state A\n  initial state B");
     assert!(has(&e, "`B` is not the only initial state"), "{e:?}");
     let e = machine_errors("  initial state A(n: Number)");
