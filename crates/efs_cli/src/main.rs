@@ -38,6 +38,12 @@ enum Command {
         /// Rebuild when files change.
         #[arg(long, short)]
         watch: bool,
+        /// Output language: `ts` (default) or `js`.
+        #[arg(long, value_name = "LANG")]
+        emit: Option<String>,
+        /// With `--emit js`, also write `.d.ts` declarations (types inferred by tsrs).
+        #[arg(long)]
+        declaration: bool,
     },
     /// Type check a project with tsrs (the Rust port of the TypeScript checker).
     Check {
@@ -86,6 +92,9 @@ enum Command {
         /// Print a Source Map v3 instead of the code.
         #[arg(long)]
         source_map: bool,
+        /// Print JavaScript instead of TypeScript.
+        #[arg(long)]
+        js: bool,
     },
     /// Print the type at a position: `efs type-at src/main.efs:12:8`.
     TypeAt { location: String },
@@ -135,7 +144,7 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let mut r = Reporter::new();
     match cli.command {
-        Command::Build { paths, out_dir, source_map, import_extension, watch } => {
+        Command::Build { paths, out_dir, source_map, import_extension, watch, emit, declaration } => {
             let mut cfg = config::Config::load(paths.first().map(PathBuf::as_path).unwrap_or(Path::new(".")));
             if let Some(e) = import_extension {
                 cfg.import_extension = e;
@@ -144,6 +153,20 @@ fn main() -> ExitCode {
                 cfg.out_dir = out_dir;
             }
             cfg.source_map |= source_map;
+            cfg.declaration |= declaration;
+            match emit.as_deref() {
+                Some("js") => cfg.emit_js = true,
+                Some("ts") => cfg.emit_js = false,
+                Some(other) => {
+                    r.error_line(&format!("unknown `--emit {other}`; expected `ts` or `js`"));
+                    return r.exit_code(false);
+                }
+                None => {}
+            }
+            if cfg.declaration && !cfg.emit_js {
+                r.error_line("`--declaration` needs `--emit js`; TypeScript output already carries its types");
+                return r.exit_code(false);
+            }
             if watch {
                 return build_watch(&paths, &cfg, &mut r);
             }
@@ -175,7 +198,7 @@ fn main() -> ExitCode {
                         Err(e) => r.error_line(&e),
                     },
                     None => r.error_line(
-                        "`--effect` needs effect-tsgo: install it with `npm install -D @effect/tsgo tsrs`, or set EFS_EFFECT_TSGO",
+                        "`--effect` needs effect-tsgo: install it with `pnpm add -D @effect/tsgo tsrs`, or set EFS_EFFECT_TSGO",
                     ),
                 }
             }
@@ -262,13 +285,17 @@ fn main() -> ExitCode {
             }
             return r.exit_code(deny_warnings);
         }
-        Command::Emit { file, span_map, source_map } => {
+        Command::Emit { file, span_map, source_map, js } => {
             let Ok(src) = std::fs::read_to_string(&file) else {
                 r.error_line(&format!("cannot read {}", file.display()));
                 return r.exit_code(false);
             };
             let cfg = config::Config::load(&file);
-            let out = efs_codegen::compile(&src, &cfg.codegen());
+            let mut opts = cfg.codegen();
+            if js {
+                opts.target = efs_codegen::Target::JavaScript;
+            }
+            let out = efs_codegen::compile(&src, &opts);
             for d in &out.diagnostics {
                 r.diagnostic(&file, &src, d);
             }
@@ -318,7 +345,7 @@ fn main() -> ExitCode {
                 r.error_line(&e);
             } else {
                 println!(
-                    "Created an EffScript project in {}.\nNext: npm install, then `efs check` and `efs build`.",
+                    "Created an EffScript project in {}.\nNext: pnpm install, then `efs check` and `efs build`.",
                     dir.display()
                 );
             }
@@ -332,11 +359,52 @@ fn file_name(p: &Path) -> String {
 }
 
 /// Compiles every file. Returns the number of files written.
+/// Where the output for `file` goes, with extension `ext`.
+fn target_for(file: &Path, root: &Path, cfg: &config::Config, ext: &str) -> PathBuf {
+    match &cfg.out_dir {
+        Some(dir) => {
+            let abs = std::fs::canonicalize(file).unwrap_or(file.to_path_buf());
+            let rel = abs.strip_prefix(root).unwrap_or(&abs);
+            dir.join(rel).with_extension(ext)
+        }
+        None => file.with_extension(ext),
+    }
+}
+
+/// Writes `text` to `target` unless unchanged or hand-written. Returns whether it was written.
+fn write_output(file: &Path, target: &Path, text: &str, r: &mut Reporter) -> bool {
+    if let Some(parent) = target.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if efs_check::is_handwritten(target) {
+        r.error_line(&format!(
+            "{}: not overwriting {}, which was not generated by efs; rename one of them",
+            file.display(),
+            target.display()
+        ));
+        return false;
+    }
+    if std::fs::read_to_string(target).is_ok_and(|old| old == text) {
+        return false;
+    }
+    if let Err(e) = std::fs::write(target, text) {
+        r.error_line(&format!("{}: {e}", target.display()));
+        return false;
+    }
+    true
+}
+
+/// Compiles every file. Returns the number of files written.
 fn build(paths: &[PathBuf], cfg: &config::Config, r: &mut Reporter) -> usize {
-    let opts = cfg.codegen();
+    let mut opts = cfg.codegen();
+    let ext = if cfg.emit_js { "js" } else { "ts" };
+    if cfg.emit_js {
+        opts.target = efs_codegen::Target::JavaScript;
+    }
     let root = std::fs::canonicalize(paths.first().map(PathBuf::as_path).unwrap_or(Path::new("."))).unwrap_or_default();
     let root = if root.is_file() { root.parent().map(Path::to_path_buf).unwrap_or_default() } else { root };
     let mut written = 0;
+    let mut built = Vec::new();
     for file in collect(paths) {
         let Ok(src) = std::fs::read_to_string(&file) else { continue };
         let out = efs_codegen::compile(&src, &opts);
@@ -347,25 +415,7 @@ fn build(paths: &[PathBuf], cfg: &config::Config, r: &mut Reporter) -> usize {
         if has_errors {
             continue;
         }
-        let target = match &cfg.out_dir {
-            Some(dir) => {
-                let abs = std::fs::canonicalize(&file).unwrap_or(file.clone());
-                let rel = abs.strip_prefix(&root).unwrap_or(&abs);
-                dir.join(rel).with_extension("ts")
-            }
-            None => efs_check::output_path(&file),
-        };
-        if let Some(parent) = target.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if efs_check::is_handwritten(&target) {
-            r.error_line(&format!(
-                "{}: not overwriting {}, which was not generated by efs; rename one of them",
-                file.display(),
-                target.display()
-            ));
-            continue;
-        }
+        let target = target_for(&file, &root, cfg, ext);
         let mut code = efs_check::generated_header(&file_name(&file));
         let header_lines = 1;
         code.push_str(&out.code);
@@ -379,17 +429,31 @@ fn build(paths: &[PathBuf], cfg: &config::Config, r: &mut Reporter) -> usize {
             }
             let map = efs_codegen::sourcemap::source_map(&shifted, &src, &source_rel, &file_name(&target));
             code.push_str(&format!("//# sourceMappingURL={}\n", file_name(&map_path)));
+            if let Some(parent) = map_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
             if let Err(e) = std::fs::write(&map_path, map) {
                 r.error_line(&format!("{}: {e}", map_path.display()));
             }
         }
-        let unchanged = std::fs::read_to_string(&target).is_ok_and(|old| old == code);
-        if !unchanged {
-            if let Err(e) = std::fs::write(&target, code) {
-                r.error_line(&format!("{}: {e}", target.display()));
+        if write_output(&file, &target, &code, r) {
+            written += 1;
+        }
+        built.push(std::fs::canonicalize(&file).unwrap_or(file));
+    }
+    if cfg.declaration && cfg.emit_js && !built.is_empty() {
+        let mut ws = efs_check::Workspace::discover(&root);
+        ws.codegen = cfg.codegen();
+        let mut session = efs_check::Session::new(ws);
+        for (file, dts) in session.declarations() {
+            if !built.contains(&file) {
                 continue;
             }
-            written += 1;
+            let target = target_for(&file, &root, cfg, "d.ts");
+            let text = efs_check::generated_header(&file_name(&file)) + &dts;
+            if write_output(&file, &target, &text, r) {
+                written += 1;
+            }
         }
     }
     written

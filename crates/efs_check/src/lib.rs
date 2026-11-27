@@ -238,6 +238,13 @@ impl Session {
         if let Some(p) = self.program {
             return p;
         }
+        let program = self.build_program(|_| {});
+        self.program = Some(program);
+        program
+    }
+
+    /// Builds a program over the overlay, with `configure` applied to the compiler options.
+    fn build_program(&mut self, configure: impl FnOnce(&mut tsrs_core::CompilerOptions)) -> &'static Program {
         self.compile();
         let mut virt = HashMap::new();
         for c in self.files.values() {
@@ -277,6 +284,9 @@ impl Session {
             )
         });
         let options = parsed.compiler_options().unwrap_or_else(|| P::new(Default::default()));
+        let mut options = (*options).clone();
+        configure(&mut options);
+        let options = P::new(options);
         let mut names: Vec<String> = parsed.file_names().to_vec();
         for k in virt.keys() {
             if k.ends_with(".ts") && !names.contains(k) {
@@ -290,9 +300,53 @@ impl Session {
             tsrs_core::tspath::ComparePathsOptions::default(),
         );
         let host = tsrs_compiler::new_compiler_host(&root, fs, &tsrs_vfs::bundled::lib_path(), None, None, None);
-        let program = tsrs_compiler::new_program(tsrs_compiler::ProgramOptions::new(P::new(config), host));
-        self.program = Some(program);
-        program
+        tsrs_compiler::new_program(tsrs_compiler::ProgramOptions::new(P::new(config), host))
+    }
+
+    /// Declaration files (`.d.ts`) for every EffScript file, by source path. Types are
+    /// inferred by tsrs from the whole program, so the files need no annotations.
+    pub fn declarations(&mut self) -> Vec<(PathBuf, String)> {
+        use tsrs_core::Tristate;
+        let program = self.build_program(|o| {
+            o.declaration = Tristate::True;
+            o.emit_declaration_only = Tristate::True;
+            o.no_emit = Tristate::False;
+            o.no_emit_on_error = Tristate::False;
+            o.declaration_map = Tristate::False;
+            o.source_map = Tristate::False;
+            o.out_dir = String::new();
+            o.declaration_dir = String::new();
+            o.composite = Tristate::False;
+            o.incremental = Tristate::False;
+        });
+        let targets: Vec<_> =
+            self.files.values().filter_map(|c| program.get_source_file(&path_str(&output_path(&c.path)))).collect();
+        let written: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+        let write = |name: &str, text: &str, _: &mut tsrs_compiler::WriteFileData| -> Result<(), String> {
+            written.lock().unwrap().push((name.to_string(), text.to_string()));
+            Ok(())
+        };
+        let ctx = Context::background();
+        program.emit(
+            &ctx,
+            &tsrs_compiler::EmitOptions {
+                target_source_files: Some(targets),
+                emit_only: tsrs_compiler::EmitOnly::EmitOnlyDts,
+                force_emit: true,
+                write_file: Some(&write),
+            },
+        );
+        let written = written.into_inner().unwrap();
+        // SAFETY: nothing derived from this program is used after this point.
+        unsafe { tsrs_compiler::free_program(program) };
+        let mut out = Vec::new();
+        for c in self.files.values() {
+            let dts = path_str(&output_path(&c.path).with_extension("d.ts"));
+            if let Some((_, text)) = written.iter().find(|(n, _)| *n == dts) {
+                out.push((c.path.clone(), text.clone()));
+            }
+        }
+        out
     }
 
     fn efs_for_virtual(&self, ts_path: &str) -> Option<&Compiled> {

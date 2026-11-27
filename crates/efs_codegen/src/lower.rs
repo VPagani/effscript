@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use efs_syntax::ast::*;
 use efs_syntax::{Diagnostic, Span};
 
 use crate::writer::{Segment, Writer};
-use crate::{Options, Output};
+use crate::{Options, Output, Target};
 
 /// Effect modules whose namespace exports a type of the same name, so that a bare
 /// `Effect<A, E, R>` in type position can mean `Effect.Effect<A, E, R>`.
@@ -52,6 +52,10 @@ pub(crate) struct Gen<'s> {
     import_slots: Vec<(String, u32)>,
     /// Errors declared with `error` in this module; their instances can be yielded directly.
     local_errors: Vec<String>,
+    /// JavaScript output: the imported names used as values (other imports are removed).
+    pub(crate) keep_imports: Option<HashSet<String>>,
+    /// Runtime names that resolved to the user's own imports.
+    rt_hits: HashSet<String>,
 }
 
 impl<'s> Gen<'s> {
@@ -71,6 +75,8 @@ impl<'s> Gen<'s> {
             update: None,
             import_slots: Vec::new(),
             local_errors: Vec::new(),
+            keep_imports: None,
+            rt_hits: HashSet::new(),
         }
     }
 
@@ -82,7 +88,10 @@ impl<'s> Gen<'s> {
     pub(crate) fn rt(&mut self, name: &str) -> String {
         let module = runtime_module(name);
         let local = match self.bindings.get(name) {
-            Some(Binding::Import { module: m, name: n }) if m == module && n == name => return name.to_string(),
+            Some(Binding::Import { module: m, name: n }) if m == module && n == name => {
+                self.rt_hits.insert(name.to_string());
+                return name.to_string();
+            }
             None => name.to_string(),
             Some(_) => format!("{name}$"),
         };
@@ -182,21 +191,58 @@ impl<'s> Gen<'s> {
             && matches!(self.bindings.get(name), Some(Binding::Import { module, name: n }) if (module == "effect" && n == name) || (n == "*" && module == &format!("effect/{name}")))
     }
 
-    pub(crate) fn module(mut self, module: &Module) -> Output {
+    pub(crate) fn js(&self) -> bool {
+        self.opts.target == Target::JavaScript
+    }
+
+    /// Writes type syntax, which JavaScript output leaves out.
+    pub(crate) fn ts_only(&mut self, f: impl FnOnce(&mut Self)) {
+        let js = self.js();
+        if js {
+            self.w.mute += 1;
+        }
+        f(self);
+        if js {
+            self.w.mute -= 1;
+        }
+    }
+
+    fn generate(&mut self, module: &Module) {
         self.collect_bindings(module);
-        for (i, item) in module.items.iter().enumerate() {
-            if i > 0 {
+        let mut prev: Option<&Item> = None;
+        for item in &module.items {
+            let before = self.w.out.len();
+            if let Some(prev) = prev {
                 self.w.s("\n");
-                let prev = &module.items[i - 1];
                 let blank = self.src[prev.span.end as usize..item.span.start as usize].matches('\n').count() > 1;
                 let both_imports = matches!(prev.kind, ItemKind::Import(_)) && matches!(item.kind, ItemKind::Import(_));
                 if blank || !both_imports && !matches!(prev.kind, ItemKind::Stmt(_) | ItemKind::Let(_)) {
                     self.w.s("\n");
                 }
             }
+            let separated = self.w.out.len();
             self.item(item);
+            if self.w.out.len() == separated {
+                // Nothing was written (a type in JavaScript output): drop the separator too.
+                self.w.out.truncate(before);
+                continue;
+            }
+            prev = Some(item);
         }
         self.w.s("\n");
+    }
+
+    /// The names the generated code uses as values: identifiers in expressions, schema
+    /// references written as types, components in markup and runtime names.
+    pub(crate) fn used_values(mut self, module: &Module) -> HashSet<String> {
+        self.generate(module);
+        let mut used = std::mem::take(&mut self.rt_hits);
+        collect_value_names(module, &mut used);
+        used
+    }
+
+    pub(crate) fn module(mut self, module: &Module) -> Output {
+        self.generate(module);
 
         // Runtime imports join an existing braced import of the same module, or get their own line.
         let mut modules: Vec<&'static str> = Vec::new();
@@ -256,11 +302,17 @@ impl<'s> Gen<'s> {
         match &item.kind {
             ItemKind::Import(imp) => self.import(imp),
             ItemKind::ExportList(list) => {
+                let specs: Vec<ImportSpec> =
+                    list.specs.iter().filter(|s| !(self.js() && s.type_only)).cloned().collect();
+                if !list.star && specs.is_empty() && !list.specs.is_empty() {
+                    self.w.pop_node();
+                    return;
+                }
                 self.w.s("export ");
                 if list.star {
                     self.w.s("*");
                 } else {
-                    self.specs(&list.specs);
+                    self.specs(&specs);
                 }
                 if let Some(src) = &list.source {
                     self.w.s(" from ");
@@ -275,14 +327,14 @@ impl<'s> Gen<'s> {
                 self.export(item);
                 self.fn_decl(f);
             }
-            ItemKind::Type(t) => {
-                self.export(item);
-                self.w.s("type ");
-                self.w.v(t.name.span);
-                self.type_params(&t.type_params);
-                self.w.s(" = ");
-                self.ty(&t.ty);
-            }
+            ItemKind::Type(t) => self.ts_only(|g| {
+                g.export(item);
+                g.w.s("type ");
+                g.w.v(t.name.span);
+                g.type_params(&t.type_params);
+                g.w.s(" = ");
+                g.ty(&t.ty);
+            }),
             ItemKind::Service(s) => self.service(item, s),
             ItemKind::Layer(l) => self.layer(item, l),
             ItemKind::Error(e) => {
@@ -291,9 +343,13 @@ impl<'s> Gen<'s> {
                 self.w.v(e.name.span);
                 self.w.s(" extends ");
                 self.rtm("Data", "TaggedError");
-                self.w.s(&format!("(\"{}\")<", e.name.name));
-                self.members(&e.fields, true);
-                self.w.s("> {}");
+                self.w.s(&format!("(\"{}\")", e.name.name));
+                self.ts_only(|g| {
+                    g.w.s("<");
+                    g.members(&e.fields, true);
+                    g.w.s(">");
+                });
+                self.w.s(" {}");
             }
             ItemKind::Schema(s) => self.schema_decl(item, s),
             ItemKind::Enum(e) => self.enum_decl(item, e),
@@ -337,16 +393,37 @@ impl<'s> Gen<'s> {
     }
 
     fn import(&mut self, imp: &Import) {
+        let keep = |name: &Ident, keep: &Option<HashSet<String>>| keep.as_ref().is_none_or(|k| k.contains(&name.name));
+        let (default, namespace, named) = if self.js() {
+            if imp.type_only {
+                return;
+            }
+            let default = imp.default.as_ref().filter(|d| keep(d, &self.keep_imports));
+            let namespace = imp.namespace.as_ref().filter(|n| keep(n, &self.keep_imports));
+            let named: Vec<ImportSpec> = imp
+                .named
+                .iter()
+                .filter(|s| !s.type_only && keep(s.alias.as_ref().unwrap_or(&s.name), &self.keep_imports))
+                .cloned()
+                .collect();
+            let side_effect_only = imp.default.is_none() && imp.namespace.is_none() && !imp.has_braces;
+            if !side_effect_only && default.is_none() && namespace.is_none() && named.is_empty() {
+                return;
+            }
+            (default, namespace, named)
+        } else {
+            (imp.default.as_ref(), imp.namespace.as_ref(), imp.named.clone())
+        };
         self.w.s("import ");
         if imp.type_only {
             self.w.s("type ");
         }
         let mut any = false;
-        if let Some(d) = &imp.default {
+        if let Some(d) = default {
             self.w.v(d.span);
             any = true;
         }
-        if let Some(n) = &imp.namespace {
+        if let Some(n) = namespace {
             if any {
                 self.w.s(", ");
             }
@@ -354,12 +431,12 @@ impl<'s> Gen<'s> {
             self.w.v(n.span);
             any = true;
         }
-        if imp.has_braces {
+        if imp.has_braces && (!named.is_empty() || !self.js()) {
             if any {
                 self.w.s(", ");
             }
-            self.specs(&imp.named);
-            if !imp.type_only && !imp.named.is_empty() {
+            self.specs(&named);
+            if !imp.type_only && !named.is_empty() {
                 // Just before the closing ` }`.
                 self.import_slots.push((imp.source.value().to_string(), self.w.pos() - 2));
             }
@@ -375,8 +452,10 @@ impl<'s> Gen<'s> {
         self.w.s(if l.kind == LetKind::Const { "const " } else { "let " });
         self.pattern(&l.pattern);
         if let Some(t) = &l.ty {
-            self.w.s(": ");
-            self.ty(t);
+            self.ts_only(|g| {
+                g.w.s(": ");
+                g.ty(t);
+            });
         }
         if let Some(init) = &l.init {
             self.w.s(" = ");
@@ -404,11 +483,13 @@ impl<'s> Gen<'s> {
             self.w.s("const ");
             self.w.v(f.name.span);
             if let Some(ret) = &f.func.ret {
-                self.w.s(": ");
-                self.type_params(&f.func.type_params);
-                self.params(&f.func.params);
-                self.w.s(" => ");
-                self.ty(ret);
+                self.ts_only(|g| {
+                    g.w.s(": ");
+                    g.type_params(&f.func.type_params);
+                    g.params(&f.func.params);
+                    g.w.s(" => ");
+                    g.ty(ret);
+                });
             }
             self.w.s(" = ");
             self.rtm("Effect", "fn");
@@ -426,8 +507,10 @@ impl<'s> Gen<'s> {
         self.type_params(&f.func.type_params);
         self.params(&f.func.params);
         if let Some(ret) = &f.func.ret {
-            self.w.s(": ");
-            self.ty(ret);
+            self.ts_only(|g| {
+                g.w.s(": ");
+                g.ty(ret);
+            });
         }
         self.w.s(" ");
         self.func_body_block(&f.func, false);
@@ -473,11 +556,14 @@ impl<'s> Gen<'s> {
         self.w.v(s.name.span);
         self.w.s(" extends ");
         self.rtm("Context", "Service");
-        self.w.s("<");
-        self.w.v(s.name.span);
-        self.w.s(", ");
-        self.members(&s.members, true);
-        self.w.s(">()(");
+        self.ts_only(|g| {
+            g.w.s("<");
+            g.w.v(s.name.span);
+            g.w.s(", ");
+            g.members(&s.members, true);
+            g.w.s(">");
+        });
+        self.w.s("()(");
         match &s.key {
             Some(k) => self.w.v(k.span),
             None => self.w.s(&format!("\"{}\"", s.name.name)),
@@ -523,6 +609,10 @@ impl<'s> Gen<'s> {
     }
 
     fn enum_decl(&mut self, item: &Item, e: &EnumDecl) {
+        let js = self.js();
+        if js {
+            self.w.mute += 1;
+        }
         self.export(item);
         self.w.s("type ");
         self.w.v(e.name.span);
@@ -560,14 +650,20 @@ impl<'s> Gen<'s> {
         self.w.nl();
         self.w.s("}>");
         self.w.nl();
+        if js {
+            self.w.mute -= 1;
+        }
         self.export(item);
         self.w.s("const ");
         self.w.v(e.name.span);
         self.w.s(" = ");
         self.rtm("Data", "taggedEnum");
-        self.w.s("<");
-        self.w.v(e.name.span);
-        self.w.s(">()");
+        self.ts_only(|g| {
+            g.w.s("<");
+            g.w.v(e.name.span);
+            g.w.s(">");
+        });
+        self.w.s("()");
     }
 
     // -----------------------------------------------------------------------------------------
@@ -575,6 +671,9 @@ impl<'s> Gen<'s> {
     // -----------------------------------------------------------------------------------------
 
     pub(crate) fn members(&mut self, members: &[TypeMember], readonly: bool) {
+        if self.js() {
+            return;
+        }
         if members.is_empty() {
             self.w.s("{}");
             return;
@@ -625,7 +724,7 @@ impl<'s> Gen<'s> {
     }
 
     pub(crate) fn type_params(&mut self, tps: &[TypeParam]) {
-        if tps.is_empty() {
+        if tps.is_empty() || self.js() {
             return;
         }
         self.w.s("<");
@@ -650,6 +749,9 @@ impl<'s> Gen<'s> {
     }
 
     pub(crate) fn ty(&mut self, t: &Type) {
+        if self.js() {
+            return;
+        }
         self.w.push_node(t.span);
         match &t.kind {
             TypeKind::Ref { name, args } => {
@@ -777,13 +879,15 @@ impl<'s> Gen<'s> {
                 self.w.s("...");
             }
             self.pattern(&p.pattern);
-            if p.optional {
-                self.w.s("?");
-            }
-            if let Some(t) = &p.ty {
-                self.w.s(": ");
-                self.ty(t);
-            }
+            self.ts_only(|g| {
+                if p.optional {
+                    g.w.s("?");
+                }
+                if let Some(t) = &p.ty {
+                    g.w.s(": ");
+                    g.ty(t);
+                }
+            });
             if let Some(d) = &p.default {
                 self.w.s(" = ");
                 self.expr(d);
@@ -1089,6 +1193,9 @@ impl<'s> Gen<'s> {
     }
 
     fn type_args(&mut self, args: &Option<Vec<Type>>) {
+        if self.js() {
+            return;
+        }
         if let Some(args) = args {
             self.w.s("<");
             for (i, a) in args.iter().enumerate() {
@@ -1235,17 +1342,21 @@ impl<'s> Gen<'s> {
             ExprKind::Markup(el) => self.element(el),
             ExprKind::As { expr, ty } => {
                 self.expr(expr);
-                self.w.s(" as ");
-                self.ty(ty);
+                self.ts_only(|g| {
+                    g.w.s(" as ");
+                    g.ty(ty);
+                });
             }
             ExprKind::Satisfies { expr, ty } => {
                 self.expr(expr);
-                self.w.s(" satisfies ");
-                self.ty(ty);
+                self.ts_only(|g| {
+                    g.w.s(" satisfies ");
+                    g.ty(ty);
+                });
             }
             ExprKind::NonNull(inner) => {
                 self.expr(inner);
-                self.w.s("!");
+                self.ts_only(|g| g.w.s("!"));
             }
             ExprKind::Error => self.w.s("undefined as never"),
         }
@@ -1271,8 +1382,10 @@ impl<'s> Gen<'s> {
         self.type_params(&func.type_params);
         self.params(&func.params);
         if let Some(r) = &func.ret {
-            self.w.s(": ");
-            self.ty(r);
+            self.ts_only(|g| {
+                g.w.s(": ");
+                g.ty(r);
+            });
         }
         self.w.s(" => ");
         let saved_update = self.update.take();
@@ -1354,8 +1467,10 @@ impl<'s> Gen<'s> {
                     self.type_params(&func.type_params);
                     self.params(&func.params);
                     if let Some(r) = &func.ret {
-                        self.w.s(": ");
-                        self.ty(r);
+                        self.ts_only(|g| {
+                            g.w.s(": ");
+                            g.ty(r);
+                        });
                     }
                     self.w.s(" ");
                     self.func_body_block(func, false);
@@ -1760,4 +1875,170 @@ fn normalized_texts(children: &[Child]) -> Vec<Option<String>> {
             if s.trim().is_empty() { None } else { Some(s) }
         })
         .collect()
+}
+
+/// Names a module uses as values. Schema fields are written as types but name schema
+/// values, so their type references count too.
+pub(crate) fn collect_value_names(module: &Module, out: &mut HashSet<String>) {
+    use efs_syntax::visit::{walk_block, walk_expr};
+    fn expr(e: &Expr, out: &mut HashSet<String>) {
+        walk_expr(e, &mut |x| match &x.kind {
+            ExprKind::Ident(n) => {
+                out.insert(n.clone());
+            }
+            ExprKind::Markup(el) => element(el, out),
+            _ => {}
+        });
+    }
+    fn element(el: &Element, out: &mut HashSet<String>) {
+        if el.is_component() {
+            out.insert(el.name[0].name.clone());
+        }
+        for c in &el.children {
+            if let Child::Element(e) = c {
+                element(e, out);
+            }
+        }
+    }
+    fn block(b: &Block, out: &mut HashSet<String>) {
+        walk_block(b, &mut |x| match &x.kind {
+            ExprKind::Ident(n) => {
+                out.insert(n.clone());
+            }
+            ExprKind::Markup(el) => element(el, out),
+            _ => {}
+        });
+    }
+    fn schema_type(t: &Type, out: &mut HashSet<String>) {
+        match &t.kind {
+            TypeKind::Ref { name, args } => {
+                out.insert(name[0].name.clone());
+                for a in args.iter().flatten() {
+                    schema_type(a, out);
+                }
+            }
+            TypeKind::Array(x) | TypeKind::Readonly(x) | TypeKind::Paren(x) => schema_type(x, out),
+            TypeKind::Union(ms) | TypeKind::Intersection(ms) => ms.iter().for_each(|m| schema_type(m, out)),
+            TypeKind::Tuple(es) => es.iter().for_each(|e| schema_type(&e.ty, out)),
+            TypeKind::Object(ms) => {
+                for m in ms {
+                    if let TypeMemberKind::Prop(t) = &m.kind {
+                        schema_type(t, out);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    fn fields(fs: &[SchemaField], out: &mut HashSet<String>) {
+        for f in fs {
+            match &f.value {
+                SchemaFieldValue::Type(t) => schema_type(t, out),
+                SchemaFieldValue::Expr(e) => expr(e, out),
+            }
+            if let Some(d) = &f.default {
+                expr(d, out);
+            }
+        }
+    }
+    fn func(f: &Func, out: &mut HashSet<String>) {
+        for p in &f.params {
+            if let Some(d) = &p.default {
+                expr(d, out);
+            }
+        }
+        match &f.body {
+            FuncBody::Expr(e) => expr(e, out),
+            FuncBody::Block(b) => block(b, out),
+        }
+    }
+    fn state_body(b: &StateBody, out: &mut HashSet<String>) {
+        let tr = |t: &Transition, out: &mut HashSet<String>| match t {
+            Transition::Target { data: Some(d), .. } | Transition::Update { data: d, .. } => expr(d, out),
+            _ => {}
+        };
+        if let Some(t) = &b.initial {
+            tr(t, out);
+        }
+        for on in &b.ons {
+            if let Some(g) = &on.guard {
+                expr(g, out);
+            }
+            tr(&on.transition, out);
+        }
+        for inv in &b.invokes {
+            if let Some(i) = &inv.input {
+                expr(i, out);
+            }
+            if let InvokeSrc::After(d) = &inv.src {
+                expr(d, out);
+            }
+            for (_, t) in &inv.handlers {
+                tr(t, out);
+            }
+        }
+        for s in &b.states {
+            fields(&s.fields, out);
+            state_body(&s.body, out);
+        }
+    }
+    for item in &module.items {
+        match &item.kind {
+            ItemKind::Let(l) => {
+                if let Some(i) = &l.init {
+                    expr(i, out);
+                }
+            }
+            ItemKind::Fn(f) => func(&f.func, out),
+            ItemKind::Layer(l) => {
+                expr(&l.service, out);
+                match &l.body {
+                    LayerBody::Effect(b) => block(b, out),
+                    LayerBody::Value(v) => expr(v, out),
+                }
+            }
+            ItemKind::Schema(s) => match &s.kind {
+                SchemaKind::Struct(f) | SchemaKind::Class(f) | SchemaKind::Tagged(f) => fields(f, out),
+                SchemaKind::Alias(t) => schema_type(t, out),
+            },
+            ItemKind::Machine(m) => {
+                if let Some(t) = &m.input {
+                    schema_type(t, out);
+                }
+                fields(&m.root_fields, out);
+                for v in &m.events {
+                    fields(&v.fields, out);
+                }
+                for s in &m.sources {
+                    expr(&s.value, out);
+                }
+                state_body(&m.body, out);
+            }
+            ItemKind::Component(c) => {
+                for m in &c.members {
+                    match &m.kind {
+                        MemberKind::Prop(f) | MemberKind::Let(f) => fields(std::slice::from_ref(f), out),
+                        MemberKind::Event(v) => fields(&v.fields, out),
+                        MemberKind::Update(u) => {
+                            fields(&u.fields, out);
+                            match &u.body {
+                                UpdateBody::Expr(e) => expr(e, out),
+                                UpdateBody::Block(b) => block(b, out),
+                            }
+                        }
+                        MemberKind::View(v) | MemberKind::Option(_, v) => expr(v, out),
+                    }
+                }
+            }
+            ItemKind::Stmt(s) => block(&Block { stmts: vec![s.clone()], span: s.span }, out),
+            ItemKind::ExportList(list) => {
+                for s in &list.specs {
+                    out.insert(s.name.name.clone());
+                }
+            }
+            ItemKind::Import(_) | ItemKind::Type(_) | ItemKind::Service(_) | ItemKind::Error(_) | ItemKind::Enum(_) => {
+            }
+        }
+        // An exported import is a value use.
+    }
 }

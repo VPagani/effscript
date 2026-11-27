@@ -457,7 +457,9 @@ impl Gen<'_> {
         if nested_emit {
             self.w.nl();
             let events = self.comp.as_ref().map(|c| c.events_name.clone()).unwrap_or_default();
-            self.w.s(&format!("const $events: Array<typeof {events}.Type> = []"));
+            self.w.s("const $events");
+            self.ts_only(|g| g.w.s(&format!(": Array<typeof {events}.Type>")));
+            self.w.s(" = []");
         }
         let saved_update = self.update.replace(UpdateCtx::default());
         let mut commands: Vec<String> = Vec::new();

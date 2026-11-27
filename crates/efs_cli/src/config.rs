@@ -1,7 +1,7 @@
 //! `efs.json`: optional project configuration, found next to or above the given path.
 //!
 //! ```json
-//! { "importExtension": ".js", "outDir": "gen", "sourceMap": true, "lint": { "disabled": ["unused-binding"] } }
+//! { "importExtension": ".js", "outDir": "gen", "sourceMap": true, "emit": "js", "declaration": true, "lint": { "disabled": ["unused-binding"] } }
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -11,12 +11,23 @@ pub struct Config {
     pub import_extension: String,
     pub out_dir: Option<PathBuf>,
     pub source_map: bool,
+    /// Write JavaScript instead of TypeScript.
+    pub emit_js: bool,
+    /// With JavaScript output, also write `.d.ts` files.
+    pub declaration: bool,
     pub lint_disabled: Vec<String>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { import_extension: ".js".into(), out_dir: None, source_map: false, lint_disabled: Vec::new() }
+        Config {
+            import_extension: ".js".into(),
+            out_dir: None,
+            source_map: false,
+            emit_js: false,
+            declaration: false,
+            lint_disabled: Vec::new(),
+        }
     }
 }
 
@@ -49,6 +60,12 @@ impl Config {
         if let Some(s) = v["sourceMap"].as_bool() {
             c.source_map = s;
         }
+        if let Some(e) = v["emit"].as_str() {
+            c.emit_js = e == "js";
+        }
+        if let Some(d) = v["declaration"].as_bool() {
+            c.declaration = d;
+        }
         if let Some(rules) = v["lint"]["disabled"].as_array() {
             c.lint_disabled = rules.iter().filter_map(|r| r.as_str().map(String::from)).collect();
         }
@@ -56,6 +73,6 @@ impl Config {
     }
 
     pub fn codegen(&self) -> efs_codegen::Options {
-        efs_codegen::Options { import_extension: self.import_extension.clone() }
+        efs_codegen::Options { import_extension: self.import_extension.clone(), ..Default::default() }
     }
 }

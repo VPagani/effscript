@@ -23,11 +23,13 @@ pub struct Writer<'s> {
     pub segs: Vec<Segment>,
     nodes: Vec<Span>,
     indent: usize,
+    /// While positive, nothing is written (used to drop type syntax for JavaScript).
+    pub mute: u32,
 }
 
 impl<'s> Writer<'s> {
     pub fn new(src: &'s str) -> Writer<'s> {
-        Writer { src, out: String::new(), segs: Vec::new(), nodes: Vec::new(), indent: 0 }
+        Writer { src, out: String::new(), segs: Vec::new(), nodes: Vec::new(), indent: 0, mute: 0 }
     }
 
     pub fn pos(&self) -> u32 {
@@ -44,7 +46,7 @@ impl<'s> Writer<'s> {
 
     /// Writes synthesized text, attributed to the innermost node.
     pub fn s(&mut self, text: &str) {
-        if text.is_empty() {
+        if text.is_empty() || self.mute > 0 {
             return;
         }
         let start = self.pos();
@@ -78,7 +80,7 @@ impl<'s> Writer<'s> {
     /// Copies source text verbatim.
     pub fn v(&mut self, span: Span) {
         let text = span.text(self.src);
-        if text.is_empty() {
+        if text.is_empty() || self.mute > 0 {
             return;
         }
         let start = self.pos();

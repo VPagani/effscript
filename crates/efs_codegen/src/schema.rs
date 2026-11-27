@@ -58,10 +58,13 @@ impl Gen<'_> {
                 self.w.v(s.name.span);
                 self.w.s(" extends ");
                 self.rtm("Schema", "Class");
-                self.w.s("<");
-                self.w.v(s.name.span);
                 // The brand makes the class nominal, so structurally equal objects are not instances.
-                self.w.s(&format!(", {{ readonly brand: unique symbol }}>({name:?})("));
+                self.ts_only(|g| {
+                    g.w.s("<");
+                    g.w.v(s.name.span);
+                    g.w.s(", { readonly brand: unique symbol }>");
+                });
+                self.w.s(&format!("({name:?})("));
                 self.schema_struct_fields(fields);
                 self.w.s(") {}");
                 return;
@@ -91,12 +94,14 @@ impl Gen<'_> {
                 self.schema_of(t);
             }
         }
-        self.w.nl();
-        self.w.s(&format!("{export}type "));
-        self.w.v(s.name.span);
-        self.w.s(" = typeof ");
-        self.w.v(s.name.span);
-        self.w.s(".Type");
+        self.ts_only(|g| {
+            g.w.nl();
+            g.w.s(&format!("{export}type "));
+            g.w.v(s.name.span);
+            g.w.s(" = typeof ");
+            g.w.v(s.name.span);
+            g.w.s(".Type");
+        });
     }
 
     /// `{ field: Schema, ... }`

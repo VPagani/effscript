@@ -13,8 +13,18 @@ use efs_syntax::{Diagnostic, Span};
 
 pub use writer::{Segment, SegmentKind};
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Target {
+    /// TypeScript, with every type kept.
+    #[default]
+    TypeScript,
+    /// JavaScript: types are dropped, and imports only used as types are removed.
+    JavaScript,
+}
+
 #[derive(Clone, Debug)]
 pub struct Options {
+    pub target: Target,
     /// The extension that replaces `.efs` in import specifiers (`.js` by default). Use
     /// `.efs` to keep specifiers unchanged, or an empty string to drop the extension.
     pub import_extension: String,
@@ -22,7 +32,7 @@ pub struct Options {
 
 impl Default for Options {
     fn default() -> Self {
-        Options { import_extension: ".js".into() }
+        Options { target: Target::TypeScript, import_extension: ".js".into() }
     }
 }
 
@@ -45,6 +55,16 @@ pub fn compile(src: &str, options: &Options) -> Output {
 }
 
 pub fn compile_module(src: &str, module: &efs_syntax::ast::Module, options: &Options) -> Output {
+    if options.target == Target::JavaScript {
+        // A first pass finds the imported names the generated code uses as values, so that
+        // imports used only as types can be removed.
+        let mut first = lower::Gen::new(src, options);
+        first.keep_imports = None;
+        let used = first.used_values(module);
+        let mut second = lower::Gen::new(src, options);
+        second.keep_imports = Some(used);
+        return second.module(module);
+    }
     lower::Gen::new(src, options).module(module)
 }
 
