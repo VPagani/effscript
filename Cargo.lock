@@ -134,6 +134,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "efs_mapper"
+version = "0.1.0"
+dependencies = [
+ "efs_codegen",
+ "efs_syntax",
+ "serde_json",
+]
+
+[[package]]
 name = "efs_syntax"
 version = "0.1.0"
 
