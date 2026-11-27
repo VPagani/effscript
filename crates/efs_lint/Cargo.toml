@@ -1,0 +1,11 @@
+[package]
+name = "efs_lint"
+description = "Lint rules for EffScript, including Effect-specific checks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+efs_syntax.workspace = true

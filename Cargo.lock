@@ -97,6 +97,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "efs_lint"
+version = "0.1.0"
+dependencies = [
+ "efs_syntax",
+]
+
+[[package]]
 name = "efs_syntax"
 version = "0.1.0"
 
