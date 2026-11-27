@@ -1,0 +1,32 @@
+{
+  "name": "effscript",
+  "version": "0.1.0",
+  "description": "EffScript: a readable syntax for Effect. Compiler, formatter, linter, language server and TypeScript content mapper.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VPagani/effscript"
+  },
+  "bin": {
+    "efs": "bin/efs.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "optionalDependencies": {
+    "@effscript/cli-linux-x64": "0.1.0",
+    "@effscript/cli-linux-arm64": "0.1.0",
+    "@effscript/cli-darwin-x64": "0.1.0",
+    "@effscript/cli-darwin-arm64": "0.1.0",
+    "@effscript/cli-win32-x64": "0.1.0"
+  },
+  "typescript": {
+    "contentMapper": {
+      "exec": [
+        "node",
+        "./bin/efs.js",
+        "mapper"
+      ]
+    }
+  }
+}

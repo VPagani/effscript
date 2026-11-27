@@ -11,7 +11,7 @@ function findBinary() {
   const exe = process.platform === "win32" ? "efs.exe" : "efs"
   const local = path.join(__dirname, "..", "native", exe)
   if (fs.existsSync(local)) return local
-  const pkg = `effscript-${process.platform}-${process.arch}`
+  const pkg = `@effscript/cli-${process.platform}-${process.arch}`
   try {
     return path.join(path.dirname(require.resolve(`${pkg}/package.json`)), exe)
   } catch {

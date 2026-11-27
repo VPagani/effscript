@@ -513,7 +513,7 @@ passes it, and works with it in two ways:
   `@effect/language-service` plugin for the run if your tsconfig does not.
 
   ```bash
-  npm install -D @effect/tsgo tsrs
+  pnpm add -D @effect/tsgo tsrs
   ```
 
   ```bash

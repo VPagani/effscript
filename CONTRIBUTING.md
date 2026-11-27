@@ -5,17 +5,19 @@ are written.
 
 ## Setup
 
-You need Rust 1.100 (pinned in `rust-toolchain.toml`) and Node.js 22.
+You need Rust 1.100 (pinned in `rust-toolchain.toml`), Node.js 22 and pnpm 10
+(`corepack enable` installs the version pinned in `package.json`). Bun is
+optional; the bundler tests use it when it is installed.
 
 ```bash
-cd examples && npm install && cd ..
+pnpm install
 ```
 
 ```bash
 cargo test --workspace
 ```
 
-Installing the example dependencies turns on the end-to-end tests, which type
+Installing the JavaScript dependencies turns on the end-to-end tests, which type
 check `examples/` and `tests/fixtures/` against the real `effect`,
 `@typeonce/effect-machine` and `@effect/ui` packages.
 
@@ -29,7 +31,14 @@ cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings
 cargo run -q -p efs_cli -- fmt --check examples tests/fixtures && cargo run -q -p efs_cli -- lint --deny-warnings examples tests/fixtures
 ```
 
-When a change alters generated TypeScript on purpose, refresh the snapshots
+The bundler plugins are tested by building a small app with each bundler and
+running the output:
+
+```bash
+pnpm test:bundlers
+```
+
+When a change alters generated TypeScript or JavaScript on purpose, refresh the snapshots
 and review the diff:
 
 ```bash
@@ -76,8 +85,10 @@ with a scope:
 | `codegen` | TypeScript generation (`crates/efs_codegen`). |
 | `check` | Type checking with tsrs (`crates/efs_check`). |
 | `fmt`, `lint`, `lsp`, `mapper`, `cli` | The crate of the same name. |
+| `wasm` | The WebAssembly compiler (`crates/efs_wasm`, `@effscript/compiler`). |
+| `plugins` | The bundler plugins (`packages/*`). |
 | `editor` | The VS Code extension. |
-| `npm` | The npm package. |
+| `npm` | The `effscript` npm package (the CLI launcher). |
 | `examples`, `docs`, `ci`, `deps` | Examples, documentation, CI and dependency updates. |
 
 Several scopes are separated by commas, `fix(syntax,fmt): ...`; leave the

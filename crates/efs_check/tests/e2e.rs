@@ -1,6 +1,6 @@
 //! Type checks the examples and fixtures against the real `effect`,
 //! `@typeonce/effect-machine` and `@effect/ui` packages. Skipped unless
-//! `examples/node_modules` is installed (`cd examples && npm install`).
+//! `examples/node_modules` is installed (`pnpm install` at the repository root).
 
 use std::path::{Path, PathBuf};
 
@@ -33,7 +33,7 @@ fn examples_and_fixtures_type_check() {
     let root = root();
     let modules = root.join("examples/node_modules");
     if !modules.join("effect").exists() {
-        eprintln!("skipping: run `npm install` in examples/ to enable");
+        eprintln!("skipping: run `pnpm install` at the repository root to enable");
         return;
     }
     let examples = check_dir(&root.join("examples"));

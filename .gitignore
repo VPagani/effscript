@@ -5,3 +5,12 @@ node_modules/
 # efs build output in the examples
 examples/src/*.ts
 examples/src/*.ts.map
+
+# pnpm
+.pnpm-store/
+
+# Built by scripts/build-wasm.mjs
+packages/compiler/efs.wasm
+
+# Bundler test output
+packages/bundler-tests/dist/

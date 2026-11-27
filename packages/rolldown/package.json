@@ -1,0 +1,34 @@
+{
+  "name": "@effscript/rolldown",
+  "version": "0.1.0",
+  "description": "Rolldown plugin for EffScript (.efs) files",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VPagani/effscript",
+    "directory": "packages/rolldown"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
+  "dependencies": {
+    "@effscript/compiler": "workspace:^",
+    "@effscript/rollup": "workspace:^"
+  },
+  "peerDependencies": {
+    "rolldown": ">=1.0.0-beta.0"
+  },
+  "peerDependenciesMeta": {
+    "rolldown": {
+      "optional": true
+    }
+  }
+}

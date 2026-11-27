@@ -1,0 +1,9 @@
+{
+  "name": "effscript-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "test:bundlers": "pnpm build:wasm && pnpm --filter @effscript/bundler-tests test"
+  }
+}

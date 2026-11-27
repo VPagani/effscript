@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+  - examples
+  - editors/vscode
+
+# Packages whose install scripts may run (esbuild checks its platform binary).
+onlyBuiltDependencies:
+  - esbuild

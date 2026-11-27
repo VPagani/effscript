@@ -1,0 +1,13 @@
+import { Console, Effect } from "effect"
+import { greeting } from "./greeting.efs"
+
+error Empty
+
+export effect function greet(names: readonly string[]) {
+  if names.length == 0 {
+    fail new Empty()
+  }
+  run Console.log(greeting(names.join(" and "), names.length))
+}
+
+export const program = greet(["bundlers", "plugins"])

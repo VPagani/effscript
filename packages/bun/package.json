@@ -1,0 +1,15 @@
+{
+  "name": "@effscript/bun",
+  "version": "0.1.0",
+  "description": "Bun plugin for EffScript (.efs) files, for bun build and the Bun runtime",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/VPagani/effscript", "directory": "packages/bun" },
+  "type": "module",
+  "exports": {
+    ".": { "types": "./index.d.ts", "default": "./index.js" }
+  },
+  "files": ["index.js", "index.d.ts"],
+  "dependencies": {
+    "@effscript/compiler": "workspace:^"
+  }
+}

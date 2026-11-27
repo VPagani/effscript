@@ -1,0 +1,24 @@
+{
+  "name": "@effscript/bundler-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "effect": "4.1.6"
+  },
+  "devDependencies": {
+    "@effscript/bun": "workspace:*",
+    "@effscript/esbuild": "workspace:*",
+    "@effscript/rolldown": "workspace:*",
+    "@effscript/rollup": "workspace:*",
+    "@effscript/vite": "workspace:*",
+    "@effscript/webpack": "workspace:*",
+    "esbuild": "^0.28.2",
+    "rolldown": "^1.3.4",
+    "rollup": "^4.68.8",
+    "vite": "^8.4.0",
+    "webpack": "^5.113.0"
+  }
+}

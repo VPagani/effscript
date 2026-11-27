@@ -1,0 +1,17 @@
+{
+  "name": "@effscript/webpack",
+  "version": "0.1.0",
+  "description": "webpack and Rspack loader for EffScript (.efs) files",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/VPagani/effscript", "directory": "packages/webpack" },
+  "type": "module",
+  "exports": {
+    ".": { "types": "./index.d.ts", "default": "./index.js" }
+  },
+  "files": ["index.js", "index.d.ts"],
+  "dependencies": {
+    "@effscript/compiler": "workspace:^"
+  },
+  "peerDependencies": { "webpack": ">=5" },
+  "peerDependenciesMeta": { "webpack": { "optional": true } }
+}

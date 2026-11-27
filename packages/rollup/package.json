@@ -1,0 +1,17 @@
+{
+  "name": "@effscript/rollup",
+  "version": "0.1.0",
+  "description": "Rollup plugin for EffScript (.efs) files",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/VPagani/effscript", "directory": "packages/rollup" },
+  "type": "module",
+  "exports": {
+    ".": { "types": "./index.d.ts", "default": "./index.js" }
+  },
+  "files": ["index.js", "index.d.ts"],
+  "dependencies": {
+    "@effscript/compiler": "workspace:^"
+  },
+  "peerDependencies": { "rollup": ">=3" },
+  "peerDependenciesMeta": { "rollup": { "optional": true } }
+}
