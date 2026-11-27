@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/efs_syntax", "crates/efs_codegen", "crates/efs_check", "crates/efs_fmt", "crates/efs_lint", "crates/efs_lsp", "crates/efs_mapper"]
+members = ["crates/efs_syntax", "crates/efs_codegen", "crates/efs_cli", "crates/efs_check", "crates/efs_fmt", "crates/efs_lint", "crates/efs_mapper", "crates/efs_lsp"]
 
 [workspace.package]
 version = "0.1.0"

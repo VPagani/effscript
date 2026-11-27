@@ -1,0 +1,23 @@
+[package]
+name = "efs_cli"
+description = "The `efs` command: build, check, format, lint and serve EffScript"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "efs"
+path = "src/main.rs"
+
+[dependencies]
+efs_syntax.workspace = true
+efs_codegen.workspace = true
+clap.workspace = true
+efs_check.workspace = true
+efs_fmt.workspace = true
+efs_mapper.workspace = true
+efs_lint.workspace = true
+efs_lsp.workspace = true
+serde_json.workspace = true
