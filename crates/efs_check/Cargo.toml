@@ -1,0 +1,20 @@
+[package]
+name = "efs_check"
+description = "Type checks EffScript projects in process with tsrs, the Rust port of the TypeScript checker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+efs_syntax.workspace = true
+efs_codegen.workspace = true
+tsrs_ast.workspace = true
+tsrs_astnav.workspace = true
+tsrs_checker.workspace = true
+tsrs_compiler.workspace = true
+tsrs_core.workspace = true
+tsrs_diagnostics.workspace = true
+tsrs_tsoptions.workspace = true
+tsrs_vfs.workspace = true
