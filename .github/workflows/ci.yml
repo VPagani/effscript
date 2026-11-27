@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  commits:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Commit messages follow CONTRIBUTING.md
+        run: scripts/check-commit-msg.sh --range "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.100.0"
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: Swatinem/rust-cache@v2
+      - name: Install example dependencies (enables the end-to-end type-check tests)
+        run: npm install --ignore-scripts
+        working-directory: examples
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - name: EffScript sources are formatted and lint-clean
+        run: |
+          cargo run -q -p efs_cli -- fmt --check examples tests/fixtures
+          cargo run -q -p efs_cli -- lint --deny-warnings examples tests/fixtures
+      - name: Type check the examples
+        run: cargo run -q -p efs_cli -- check examples
